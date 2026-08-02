@@ -4,6 +4,14 @@ import { useI18n } from 'vue-i18n'
 const { t } = useI18n()
 defineProps(['product'])
 const cartStore = useCartStore()
+
+const translateCategory = (cat) => {
+  if (!cat) return ''
+  const cleanKey = cat.replace(/'/g, '')
+  const translation = t(`categories['${cleanKey}']`)
+  if (translation.includes('categories[')) return cat 
+  return translation
+}
 </script>
 
 <template>
@@ -11,15 +19,13 @@ const cartStore = useCartStore()
    
     <div class="image-container">
       <span v-if="product.stock === 0" class="badge out-of-stock">نفذت الكمية</span>
-      <span class="badge category-badge">{{ t(`categories.${product.category}`) }}</span>
-      
+      <span class="badge category-badge">{{ translateCategory(product.category) }}</span>
       
       <router-link :to="`/product/${product.id}`" class="img-link">
         <img :src="product.image" :alt="product.title" class="product-img">
       </router-link>
     </div>
     
-   
     <div class="card-content">
       
       <div class="rating">
@@ -30,14 +36,12 @@ const cartStore = useCartStore()
         <span class="reviews">({{ product.rating?.count || 0 }})</span>
       </div>
 
-      
       <h3 class="title" :title="product.title">
         <router-link :to="`/product/${product.id}`" class="title-link">
           {{ product.title }}
         </router-link>
       </h3>
     </div>
-    
 
     <div class="card-footer">
       <div class="price-container">
@@ -49,7 +53,6 @@ const cartStore = useCartStore()
         <router-link class="icon-btn details-btn" :to="`/product/${product.id}`" title="التفاصيل">
           <i class="fa-regular fa-eye"></i>
         </router-link>
-        
         
         <button 
           class="primary-btn add-to-cart" 
@@ -65,7 +68,6 @@ const cartStore = useCartStore()
 </template>
 
 <style scoped>
-
 .product-card {
   background: #ffffff;
   border-radius: 16px;
@@ -83,7 +85,6 @@ const cartStore = useCartStore()
   transform: translateY(-8px);
   box-shadow: 0 15px 30px rgba(0, 0, 0, 0.08);
 }
-
 
 .image-container {
   position: relative;
@@ -113,12 +114,9 @@ const cartStore = useCartStore()
   height: 100%;
 }
 
-
-
 .product-card:hover .product-img {
   transform: scale(1.1);
 }
-
 
 .badge {
   position: absolute;
@@ -147,7 +145,6 @@ const cartStore = useCartStore()
   box-shadow: 0 4px 10px rgba(239, 68, 68, 0.3);
 }
 
-/* محتوى الكارت */
 .card-content {
   padding: 20px 20px 10px;
   flex-grow: 1;
@@ -196,7 +193,6 @@ const cartStore = useCartStore()
   color: #2563eb;
 }
 
-/* الفوتر */
 .card-footer {
   padding: 15px 20px 20px;
   display: flex;
@@ -223,7 +219,6 @@ const cartStore = useCartStore()
   font-weight: 800;
 }
 
-/* الأزرار */
 .actions {
   display: flex;
   gap: 10px;

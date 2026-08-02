@@ -25,7 +25,6 @@
       </ul>
 
       <div class="desktop-actions">
-        <!-- زرار تغيير اللغة -->
         <button @click="toggleLanguage" class="lang-btn" title="تغيير اللغة">
           <i class="fa-solid fa-globe"></i> {{ locale === 'ar' ? 'EN' : 'AR' }}
         </button>
@@ -191,7 +190,6 @@ const isAuthReady = ref(false)
 const localSearchQuery = ref('')
 const showSuggestions = ref(false)
 
-// دالة تغيير اللغة والاتجاه
 const toggleLanguage = () => {
   locale.value = locale.value === 'ar' ? 'en' : 'ar'
   document.documentElement.dir = locale.value === 'ar' ? 'rtl' : 'ltr'
@@ -223,6 +221,14 @@ const submitSearch = () => {
 }
 
 onMounted(() => {
+  const savedLang = localStorage.getItem('lang')
+  if (savedLang) {
+    locale.value = savedLang
+    document.documentElement.dir = savedLang === 'ar' ? 'rtl' : 'ltr'
+  } else {
+    document.documentElement.dir = locale.value === 'ar' ? 'rtl' : 'ltr'
+  }
+
   onAuthStateChanged(auth, async (user) => {
     if (user) {
       currentUser.value = user
@@ -368,7 +374,6 @@ onUnmounted(() => {
   flex-shrink: 0; 
 }
 
-/* زرار اللغة */
 .lang-btn {
   background: #f8fafc;
   border: 1px solid #e2e8f0;

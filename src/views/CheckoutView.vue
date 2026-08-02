@@ -10,7 +10,6 @@
 
     <div v-else class="checkout-grid">
       
-      <!-- نموذج البيانات الشخصية والشحن -->
       <div class="form-card">
         <h2><i class="fa-solid fa-truck-fast"></i> بيانات الشحن والتوصيل</h2>
         
@@ -81,7 +80,6 @@
         </form>
       </div>
 
-      <!-- كارت ملخص المنتجات -->
       <div class="summary-card">
         <h2><i class="fa-solid fa-bag-shopping"></i> ملخص المنتجات ({{ cartStore.totalItemsCount }})</h2>
         
@@ -123,7 +121,7 @@
 import { ref, onMounted } from 'vue'
 import { useCartStore } from '../stores/cartStore'
 import { db, auth } from '../firebase/config'
-import { collection, addDoc, serverTimestamp, doc, getDoc, writeBatch, increment } from 'firebase/firestore'
+import { collection, serverTimestamp, doc, getDoc, writeBatch, increment } from 'firebase/firestore'
 import { onAuthStateChanged } from 'firebase/auth'
 import { useRouter } from 'vue-router'
 import Swal from 'sweetalert2'
@@ -172,7 +170,11 @@ const handleCheckout = handleSubmit(async (values) => {
   if (cartStore.cart.length === 0) return
 
   try {
-   const orderData = {
+    const batch = writeBatch(db)
+    
+    const newOrderRef = doc(collection(db, 'orders'))
+
+    const orderData = {
       userId: currentUserId.value || 'guest', 
       customer: {
         ...values,
@@ -185,17 +187,16 @@ const handleCheckout = handleSubmit(async (values) => {
       createdAt: serverTimestamp()
     }
 
-    await addDoc(collection(db, 'orders'), orderData)
-    const batch = writeBatch(db)
+    batch.set(newOrderRef, orderData)
 
-      cartStore.cart.forEach((item) => {
-        const productRef = doc(db, 'products', item.id)
-        batch.update(productRef, {
-          stock: increment(-item.quantity)
-        })
+    cartStore.cart.forEach((item) => {
+      const productRef = doc(db, 'products', item.id)
+      batch.update(productRef, {
+        stock: increment(-item.quantity)
       })
+    })
 
-      await batch.commit()
+    await batch.commit()
     cartStore.clearCart()
 
     Swal.fire({

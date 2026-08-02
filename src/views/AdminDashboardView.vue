@@ -7,13 +7,11 @@
         <p>نظرة عامة على أداء المتجر والمبيعات</p>
       </div>
 
-      <!-- حالة التحميل -->
       <div v-if="loading" class="loading-state">
         <i class="fa-solid fa-spinner fa-spin"></i> جاري حرق الأرقام وحساب الإحصائيات...
       </div>
 
       <template v-else>
-        <!-- كروت الإحصائيات الرئيسية (KPI Cards) -->
         <div class="stats-grid">
           
           <div class="stat-card green">
@@ -50,10 +48,8 @@
 
         </div>
 
-        <!-- قسم التفاصيل السريعة (جدول آخر الطلبات + تنبيهات المخزون) -->
         <div class="dashboard-details-grid">
           
-          <!-- آخر 5 طلبات -->
           <div class="details-card">
             <div class="card-title">
               <h3><i class="fa-solid fa-clock-rotate-left"></i> أحدث الطلبات</h3>
@@ -78,7 +74,6 @@
             </ul>
           </div>
 
-          <!-- المنتجات وشيكة النفاذ -->
           <div class="details-card">
             <div class="card-title">
               <h3><i class="fa-solid fa-triangle-exclamation"></i> تنبيهات المخزون</h3>
@@ -110,7 +105,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { db } from '../firebase/config'
-import { collection, getDocs, query, orderBy, limit } from 'firebase/firestore'
+import { collection, getDocs, query, orderBy, limit, getCountFromServer, getAggregateFromServer, sum, where } from 'firebase/firestore'
 import AdminLayout from '../components/AdminLayout.vue'
 
 const loading = ref(true)
@@ -127,36 +122,30 @@ const lowStockProducts = ref([])
 
 onMounted(async () => {
   try {
-    // 1. جلب الطلبات وحساب الأرباح + إعداد آخر 5 طلبات
-    const ordersSnap = await getDocs(query(collection(db, 'orders'), orderBy('createdAt', 'desc')))
-    stats.value.totalOrders = ordersSnap.size
-    
-    let sumRevenue = 0
-    const ordersArray = []
-    ordersSnap.forEach(doc => {
-      const data = doc.data()
-      sumRevenue += (data.totalPrice || 0)
-      ordersArray.push({ id: doc.id, ...data })
-    })
-    stats.value.totalRevenue = sumRevenue
-    recentOrders.value = ordersArray.slice(0, 5) // بناخد أول 5 طلبات بس
+    const ordersCol = collection(db, 'orders')
+    const ordersCountSnap = await getCountFromServer(ordersCol)
+    stats.value.totalOrders = ordersCountSnap.data().count
 
-    // 2. جلب المنتجات وتحديد المنخفض منها
-    const productsSnap = await getDocs(collection(db, 'products'))
-    stats.value.totalProducts = productsSnap.size
-    
-    const lowStockArray = []
-    productsSnap.forEach(doc => {
-      const p = { id: doc.id, ...doc.data() }
-      if (p.stock <= (p.lowStockThreshold || 5)) {
-        lowStockArray.push(p)
-      }
+    const revenueSnap = await getAggregateFromServer(ordersCol, {
+      totalRevenue: sum('totalPrice')
     })
-    lowStockProducts.value = lowStockArray.slice(0, 5)
+    stats.value.totalRevenue = revenueSnap.data().totalRevenue || 0
 
-    // 3. جلب عدد المستخدمين
-    const usersSnap = await getDocs(collection(db, 'users'))
-    stats.value.totalUsers = usersSnap.size
+    const qRecentOrders = query(ordersCol, orderBy('createdAt', 'desc'), limit(5))
+    const recentOrdersSnap = await getDocs(qRecentOrders)
+    recentOrders.value = recentOrdersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+
+    const productsCol = collection(db, 'products')
+    const productsCountSnap = await getCountFromServer(productsCol)
+    stats.value.totalProducts = productsCountSnap.data().count
+
+    const qLowStock = query(productsCol, where('stock', '<=', 5), limit(5))
+    const lowStockSnap = await getDocs(qLowStock)
+    lowStockProducts.value = lowStockSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+
+    const usersCol = collection(db, 'users')
+    const usersCountSnap = await getCountFromServer(usersCol)
+    stats.value.totalUsers = usersCountSnap.data().count
 
   } catch (error) {
     console.error("خطأ في جلب الإحصائيات:", error)
@@ -198,7 +187,6 @@ onMounted(async () => {
   font-size: 1.2rem;
 }
 
-/* كروت الإحصائيات */
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
@@ -247,7 +235,6 @@ onMounted(async () => {
 .stat-card.purple .stat-icon { background: #f3e8ff; color: #9333ea; }
 .stat-card.orange .stat-icon { background: #ffedd5; color: #ea580c; }
 
-/* قسم التفاصيل */
 .dashboard-details-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
@@ -298,7 +285,6 @@ onMounted(async () => {
   font-weight: 600;
 }
 
-/* القوائم الداخلية */
 .recent-orders-list, .low-stock-list {
   list-style: none;
   padding: 0;

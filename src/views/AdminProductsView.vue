@@ -41,7 +41,7 @@
                           </td>
                           
                           <td class="title-col">{{ product.title }}</td>
-                          <td><span class="category-badge">{{ t(`categories.${product.category}`) }}</span></td>
+                          <td><span class="category-badge">{{ translateCategory(product.category) }}</span></td>
                           <td class="price-col">${{ product.price }}</td>
                           
                           <td>
@@ -77,7 +77,6 @@
           </table>
       </div>
 
-    
       <div class="pagination-nav" v-if="totalPages > 1">
           <button 
               type="button"
@@ -108,7 +107,6 @@
               التالي
           </button>
       </div>
-      
       
       <div v-if="isModalVisible" class="modal-overlay" @click.self="closeProductModal">
           <div class="modal-content">
@@ -180,8 +178,8 @@ import Swal from 'sweetalert2'
 import SharedFilter from '../components/SharedFilter.vue'
 import AdminLayout from '../components/AdminLayout.vue' 
 import { useI18n } from 'vue-i18n'
-const { t } = useI18n()
 
+const { t } = useI18n()
 const productStore = useProductStore()
 
 const isModalVisible = ref(false)
@@ -200,18 +198,17 @@ const productFormState = ref({
     description: '' 
 })
 
-
-
-
-const translateCategory = (categoryName) => {
-    if (!categoryName) return ''
-    const lowerName = categoryName.trim().toLowerCase()
-    return categoryTranslations[lowerName] || categoryName
-}
-
 onMounted(() => {
     productStore.fetchdata()
 })
+
+const translateCategory = (cat) => {
+  if (!cat) return ''
+  const cleanKey = cat.replace(/'/g, '')
+  const translation = t(`categories['${cleanKey}']`)
+  if (translation.includes('categories[')) return cat 
+  return translation
+}
 
 const uniqueCategories = computed(() => {
     const categoriesList = productStore.products.map(item => item.category)
@@ -221,10 +218,9 @@ const uniqueCategories = computed(() => {
 const translatedCategories = computed(() => {
     return uniqueCategories.value.map(cat => ({
         original: cat,
-        translated: t(`categories.${cat}`) === `categories.${cat}` ? cat : t(`categories.${cat}`)
+        translated: translateCategory(cat)
     }))
 })
-
 
 const filteredProductsList = computed(() => {
     const queryText = (productStore.searchQuery || '').toLowerCase()
@@ -238,12 +234,10 @@ const filteredProductsList = computed(() => {
     })
 })
 
-// حساب عدد الصفحات بعد الفلترة
 const totalPages = computed(() => {
     return Math.ceil(filteredProductsList.value.length / productStore.itemsPerPage) || 1
 })
 
-// اقتطاع المنتجات الخاصة بالصفحة الحالية فقط
 const paginatedProducts = computed(() => {
     const start = (productStore.currentPage - 1) * productStore.itemsPerPage
     const end = start + productStore.itemsPerPage
@@ -254,7 +248,6 @@ const changePage = (pageNumber) => {
     if (pageNumber >= 1 && pageNumber <= totalPages.value) {
         productStore.currentPage = pageNumber
         
-        // إصلاح نطة الباجنيشن: سكرول ناعم لأعلى الصفحة عند التبديل
         window.scrollTo({
             top: 0,
             behavior: 'smooth'
@@ -305,7 +298,6 @@ const confirmProductDeletion = async (productId) => {
         try {
             await productStore.deleteProduct(productId)
             
-            // التحقق إذا كانت الصفحة الحالية أصبحت فارغة بعد الحذف، نرجع للصفحة السابقة
             if (paginatedProducts.value.length === 0 && productStore.currentPage > 1) {
                 productStore.currentPage -= 1
             }
@@ -493,7 +485,7 @@ const handleFormSubmission = async () => {
     box-shadow: 0 10px 30px rgba(0, 0, 0, 0.04);
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
-    min-height: 650px; /* التعديل هنا: يمنع الجدول من الانكماش فجأة عند نهاية الباجنيشن */
+    min-height: 650px; 
 }
 
 .product-table {
@@ -502,7 +494,6 @@ const handleFormSubmission = async () => {
     min-width: 900px;
 }
 
-/* تحسين شكل الأعمدة لمنع تداخل النصوص */
 .product-table th, .product-table td {
     padding: 16px 15px;
     text-align: right;
@@ -511,7 +502,6 @@ const handleFormSubmission = async () => {
     white-space: nowrap; 
 }
 
-/* السماح لاسم المنتج بالالتفاف إذا كان طويلاً */
 .product-table td.title-col {
     white-space: normal;
     min-width: 200px;
@@ -591,7 +581,6 @@ const handleFormSubmission = async () => {
     font-size: 1.1rem;
 }
 
-/* ترقيم الصفحات */
 .pagination-nav {
     display: flex;
     justify-content: center;

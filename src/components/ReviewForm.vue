@@ -2,10 +2,9 @@
 import { ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { db, auth } from '../firebase/config'
-import { doc, updateDoc, arrayUnion, getDoc } from 'firebase/firestore'
+import { doc, runTransaction } from 'firebase/firestore'
 import Swal from 'sweetalert2'
 import { useRouter } from 'vue-router'
-
 
 const route = useRoute()
 const router = useRouter()
@@ -31,18 +30,6 @@ const sendReview = async () => {
   try {
     const itemRef = doc(db, 'products', route.params.id)
     
-   
-    const docSnap = await getDoc(itemRef)
-    const prodData = docSnap.data()
-    
-    
-    const oldRating = prodData.rating || { count: 0, rate: 0 }
-    const newCount = oldRating.count + 1
-    const totalOldScore = oldRating.rate * oldRating.count
-  
-    const newRate = Number(((totalOldScore + rating.value) / newCount).toFixed(1))
-
-   
     const reviewData = {
       id: Date.now().toString(),
       userId: auth.currentUser.uid,
@@ -52,13 +39,27 @@ const sendReview = async () => {
       date: new Date().toLocaleDateString('ar-EG')
     }
 
-  
-    await updateDoc(itemRef, {
-      reviews: arrayUnion(reviewData),
-      rating: {
-        count: newCount,
-        rate: newRate
+    await runTransaction(db, async (transaction) => {
+      const docSnap = await transaction.get(itemRef)
+      if (!docSnap.exists()) {
+        throw new Error("المنتج غير موجود")
       }
+      
+      const prodData = docSnap.data()
+      const oldRating = prodData.rating || { count: 0, rate: 0 }
+      const newCount = oldRating.count + 1
+      const totalOldScore = oldRating.rate * oldRating.count
+      const newRate = Number(((totalOldScore + rating.value) / newCount).toFixed(1))
+      
+      const currentReviews = prodData.reviews || []
+
+      transaction.update(itemRef, {
+        reviews: [...currentReviews, reviewData],
+        rating: {
+          count: newCount,
+          rate: newRate
+        }
+      })
     })
 
     comment.value = ''
@@ -72,7 +73,7 @@ const sendReview = async () => {
       showConfirmButton: false 
     })
   } catch (err) {
-    console.log("مشكلة في حفظ التقييم:", err)
+    console.error("مشكلة في حفظ التقييم:", err)
     Swal.fire({ icon: 'error', title: 'حدث خطأ أثناء الإرسال' })
   } finally {
     loading.value = false

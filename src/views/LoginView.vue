@@ -1,7 +1,7 @@
 <script setup>
 import { ref } from 'vue'
 import { auth, db } from '../firebase/config'
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword , signOut} from 'firebase/auth'
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } from 'firebase/auth'
 import { doc, setDoc, getDoc } from 'firebase/firestore'
 import { useRouter } from 'vue-router'
 import Swal from 'sweetalert2'
@@ -15,8 +15,9 @@ const lastName = ref('')
 const phone = ref('')
 
 const isLoading = ref(false)
-const isLoginMode = ref(true) 
+const isLoginMode = ref(true)
 
+const generalAuthError = ref('')
 const emailError = ref('')
 const passwordError = ref('')
 const firstNameError = ref('')
@@ -41,6 +42,7 @@ const getArabicErrorMessage = (errorCode) => {
 }
 
 const clearErrors = () => {
+  generalAuthError.value = ''
   emailError.value = ''
   passwordError.value = ''
   firstNameError.value = ''
@@ -50,7 +52,6 @@ const clearErrors = () => {
 
 const handleSubmit = async () => {
   clearErrors()
-  
   let hasError = false
 
   if (!email.value) {
@@ -66,13 +67,17 @@ const handleSubmit = async () => {
     hasError = true
   }
 
-  if (isLoginMode.value) {
+  if (hasError) return
+
+  isLoading.value = true
+
+  try {
+    if (isLoginMode.value) {
       const userCredential = await signInWithEmailAndPassword(auth, email.value, password.value)
       const userDoc = await getDoc(doc(db, 'users', userCredential.user.uid))
       
-      
       if (userDoc.exists() && userDoc.data().status === 'banned') {
-        await signOut(auth) 
+        await signOut(auth)
         Swal.fire({
           icon: 'error',
           title: 'حساب موقوف',
@@ -80,7 +85,7 @@ const handleSubmit = async () => {
           confirmButtonColor: '#ef4444'
         })
         isLoading.value = false
-        return 
+        return
       }
 
       Swal.fire({
@@ -91,30 +96,7 @@ const handleSubmit = async () => {
       })
 
       if (userDoc.exists() && userDoc.data().role === 'admin') {
-        router.push('/admin/orders')
-      } else {
-        router.push('/')
-      }
-    } else {
-     
-
-  if (hasError) return
-
-  isLoading.value = true
-  try {
-    if (isLoginMode.value) {
-      const userCredential = await signInWithEmailAndPassword(auth, email.value, password.value)
-      const userDoc = await getDoc(doc(db, 'users', userCredential.user.uid))
-      
-      Swal.fire({
-        icon: 'success',
-        title: 'أهلاً بك!',
-        timer: 1500,
-        showConfirmButton: false
-      })
-
-      if (userDoc.exists() && userDoc.data().role === 'admin') {
-        router.push('/admin/orders')
+        router.push('/admin/dashboard')
       } else {
         router.push('/')
       }
@@ -124,10 +106,11 @@ const handleSubmit = async () => {
       await setDoc(doc(db, 'users', userCredential.user.uid), {
         firstName: firstName.value,
         lastName: lastName.value,
-        name: `${firstName.value} ${lastName.value}`, 
+        name: `${firstName.value} ${lastName.value}`,
         phone: phone.value,
         email: userCredential.user.email,
         role: 'customer',
+        status: 'active',
         createdAt: new Date()
       })
 
@@ -142,18 +125,21 @@ const handleSubmit = async () => {
   } catch (error) {
     console.error(error)
     const errText = getArabicErrorMessage(error.code)
-    if (error.code.includes('email') || error.code.includes('credential') || error.code.includes('user') || error.code.includes('password')) {
+    
+    if (isLoginMode.value && (error.code === 'auth/invalid-credential' || error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password')) {
+      generalAuthError.value = 'البريد الإلكتروني أو كلمة المرور غير صحيحة.'
+    } else {
       if (error.code.includes('password')) {
         passwordError.value = errText
-      } else {
+      } else if (error.code.includes('email')) {
         emailError.value = errText
+      } else {
+        Swal.fire({
+          icon: 'error',
+          title: 'خطأ',
+          text: errText
+        })
       }
-    } else {
-      Swal.fire({
-        icon: 'error',
-        title: 'خطأ',
-        text: errText
-      })
     }
   } finally {
     isLoading.value = false
@@ -176,6 +162,10 @@ const handleSubmit = async () => {
       
       <form @submit.prevent="handleSubmit" novalidate>
         
+        <div v-if="generalAuthError" class="general-error-alert">
+          <i class="fa-solid fa-triangle-exclamation"></i> {{ generalAuthError }}
+        </div>
+
         <template v-if="!isLoginMode">
           <div class="name-row">
             <div class="form-group half-width">
@@ -199,13 +189,13 @@ const handleSubmit = async () => {
 
         <div class="form-group">
           <label>البريد الإلكتروني</label>
-          <input v-model="email" type="email" placeholder="name@example.com" :class="{ 'input-error': emailError }">
+          <input v-model="email" type="email" placeholder="name@example.com" :class="{ 'input-error': emailError || generalAuthError }">
           <span v-if="emailError" class="error-text">{{ emailError }}</span>
         </div>
 
         <div class="form-group">
           <label>كلمة المرور</label>
-          <input v-model="password" type="password" placeholder="••••••••" :class="{ 'input-error': passwordError }">
+          <input v-model="password" type="password" placeholder="••••••••" :class="{ 'input-error': passwordError || generalAuthError }">
           <span v-if="passwordError" class="error-text">{{ passwordError }}</span>
         </div>
 
@@ -219,14 +209,14 @@ const handleSubmit = async () => {
         <div v-if="isLoginMode" class="test-credentials">
           <p class="test-title"><i class="fa-solid fa-circle-info"></i> بيانات للتجربة السريعة:</p>
           <div class="test-boxes">
-            <div class="test-box" @click="email='admin@test.com'; password='password123'">
+            <div class="test-box" @click="email='karim@gmail.com'; password='password'">
               <span class="role">المدير (Admin)</span>
-              <span>admin@gmail.com</span>
+              <span>karim@gmail.com</span>
               <span>password</span>
             </div>
-            <div class="test-box" @click="email='user@test.com'; password='password123'">
+            <div class="test-box" @click="email='admin@gmail.com'; password='password'">
               <span class="role">العميل (User)</span>
-              <span>test@gmail.com</span>
+              <span>admin@gmail.com</span>
               <span>password</span>
             </div>
           </div>
@@ -296,6 +286,20 @@ h2 {
   color: #1e293b; 
   font-weight: 800; 
   font-size: 1.6rem;
+}
+
+.general-error-alert {
+  background-color: #fef2f2;
+  color: #ef4444;
+  padding: 12px 15px;
+  border-radius: 12px;
+  margin-bottom: 20px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid #fca5a5;
 }
 
 .name-row { 
@@ -391,6 +395,7 @@ h2 {
 .toggle-mode a:hover {
   text-decoration: underline;
 }
+
 .loading-content {
   display: flex;
   align-items: center;
@@ -410,5 +415,66 @@ h2 {
 @keyframes spin {
   0% { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }
+}
+
+.test-credentials {
+  margin-top: 25px;
+  background-color: #f8fafc;
+  padding: 15px;
+  border-radius: 12px;
+  border: 1px dashed #cbd5e1;
+}
+
+.test-title {
+  margin: 0 0 15px 0;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #475569;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.test-boxes {
+  display: flex;
+  gap: 15px;
+}
+
+.test-box {
+  flex: 1;
+  background-color: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.test-box:hover {
+  border-color: #2563eb;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.1);
+  transform: translateY(-2px);
+}
+
+.test-box span {
+  font-size: 0.85rem;
+  color: #64748b;
+  word-break: break-all;
+}
+
+.test-box .role {
+  font-weight: 700;
+  color: #1e293b;
+  margin-bottom: 5px;
+}
+
+.hint-text {
+  margin: 15px 0 0 0;
+  font-size: 0.8rem;
+  color: #94a3b8;
+  text-align: center;
 }
 </style>

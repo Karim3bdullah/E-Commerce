@@ -9,7 +9,6 @@ import AdminNotifications from '../components/AdminNotifications.vue'
 const router = useRouter()
 const route = useRoute()
 
-
 const productStore = useProductStore() 
 
 const handleLogout = async () => {
@@ -26,8 +25,6 @@ const handleLogout = async () => {
 
   if (result.isConfirmed) {
     await signOut(auth)
-    isDropdownOpen.value = false
-    isMobileMenuOpen.value = false
     router.push('/login')
   }
 }
@@ -80,14 +77,12 @@ const handleLogout = async () => {
       </div>
     </aside>
 
-    
     <main class="main-content">
       
      <header class="topbar">
        
         <div class="admin-search-bar" :class="{ 'hidden-search': route.path !== '/admin/products' }">
           <i class="fa-solid fa-magnifying-glass search-icon"></i>
-          <!-- ربط البحث بمتغير Pinia سيجعل الجدول يتفلتر فوراً وبسلاسة! -->
           <input 
             type="text" 
             v-model="productStore.searchQuery" 
@@ -108,7 +103,6 @@ const handleLogout = async () => {
         </div>
       </header>
 
-     
       <div class="content-wrapper">
         <slot></slot>
       </div>
@@ -236,6 +230,7 @@ const handleLogout = async () => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 20px;
   box-shadow: 0 2px 10px rgba(0,0,0,0.05);
   position: sticky;
   top: 0;
@@ -244,9 +239,9 @@ const handleLogout = async () => {
 
 .admin-search-bar {
   position: relative;
-  width: 100%;
-  max-width: 400px;
+  flex: 0 1 400px; 
 }
+
 .admin-search-bar.hidden-search {
   visibility: hidden;
   pointer-events: none;
@@ -270,6 +265,7 @@ const handleLogout = async () => {
   font-size: 0.95rem;
   outline: none;
   transition: all 0.3s;
+  box-sizing: border-box;
 }
 
 .admin-search-bar .search-input:focus {
@@ -282,6 +278,7 @@ const handleLogout = async () => {
   display: flex;
   align-items: center;
   gap: 25px;
+  flex-shrink: 0;
 }
 
 .admin-profile-wrapper {
@@ -293,7 +290,7 @@ const handleLogout = async () => {
 }
 
 @media (max-width: 768px) {
-  .admin-search-bar { display: none; /* إخفاء البحث في الشاشات الصغيرة لتوفير المساحة */ }
+  .admin-search-bar { display: none; }
   .welcome-text { display: none; }
 }
 

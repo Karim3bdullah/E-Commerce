@@ -1,12 +1,10 @@
 <template>
   <div class="home-container">
     
-    <!-- قسم الفلاتر -->
     <div class="filters-section">
       <SharedFilter :categories="translatedCategories" @filter="handleCategoryFilter" />
     </div>
 
-   
     <div class="products-grid">
       <div v-if="productStore.isloading" class="loading-state">
         <i class="fa-solid fa-spinner fa-spin"></i> جاري جلب المنتجات...
@@ -26,7 +24,6 @@
       </template>
     </div>
     
-   
     <div class="pagination-nav" v-if="totalPages > 1">
       <button 
         class="page-btn" 
@@ -34,12 +31,9 @@
         @click="changePage(productStore.currentPage - 1)"
       >السابق</button>
 
-      
       <template v-for="(page, index) in visiblePages" :key="index">
-     
         <span v-if="page === '...'" class="dots">...</span>
         
-     
         <button 
           v-else
           :class="['page-btn', { active: productStore.currentPage === page }]"
@@ -63,11 +57,11 @@ import { useProductStore } from '../stores/productstore'
 import ProductCard from '../components/ProductCard.vue'
 import SharedFilter from '../components/SharedFilter.vue'
 import { useI18n } from 'vue-i18n'
+
 const { t } = useI18n()
 
 const productStore = useProductStore()
 const selectedCategory = ref('')
-
 
 const displayedProducts = computed(() => {
   const query = (productStore.searchQuery || '').toLowerCase()
@@ -84,7 +78,6 @@ const totalPages = computed(() => {
   return Math.ceil(displayedProducts.value.length / productStore.itemsPerPage) || 1
 })
 
-
 const visiblePages = computed(() => {
   const total = totalPages.value;
   const current = productStore.currentPage;
@@ -97,7 +90,6 @@ const visiblePages = computed(() => {
   pages.push(1);
   
   if (current > 3) pages.push('...'); 
-  
   
   const start = Math.max(2, current - 1);
   const end = Math.min(total - 1, current + 1);
@@ -112,7 +104,6 @@ const visiblePages = computed(() => {
   return pages;
 })
 
-
 const paginatedProducts = computed(() => {
   const start = (productStore.currentPage - 1) * productStore.itemsPerPage
   const end = start + productStore.itemsPerPage
@@ -122,24 +113,20 @@ const paginatedProducts = computed(() => {
 const changePage = (pageNumber) => {
   if (pageNumber >= 1 && pageNumber <= totalPages.value) {
     productStore.currentPage = pageNumber
-    window.scrollTo({ top: 0, behavior: 'smooth' }) // سكرول ناعم لفوق
+    window.scrollTo({ top: 0, behavior: 'smooth' }) 
   }
 }
-
 
 watch([() => productStore.searchQuery, selectedCategory], () => {
   productStore.currentPage = 1
 })
 
-
-
-
 const translateCategory = (cat) => {
   if (!cat) return ''
-  const cleanKey = cat.trim().toLowerCase().replace(/['\s]/g, '')
-  const translation = t(`categories.${cleanKey}`)
+  const cleanKey = cat.trim().toLowerCase().replace(/'/g, '')
+  const translation = t(`categories['${cleanKey}']`)
   
-  if (translation === `categories.${cleanKey}`) {
+  if (translation === `categories['${cleanKey}']` || translation.includes('categories')) {
     return cat 
   }
   return translation

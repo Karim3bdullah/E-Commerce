@@ -5,9 +5,10 @@
             @change="$emit('filter', selectedCategory)" 
             class="filter-select"
         >
-            <option value="">كل الأقسام</option>
-           <option value="">{{ t('home.allCategories') }}</option>
-             
+            <option value="">{{ t('home.allCategories') }}</option>
+            <option v-for="(category, index) in categories" :key="index" :value="category.original">
+                {{ category.translated }}
+            </option>
         </select>
         <i class="fa-solid fa-chevron-down select-icon"></i>
     </div>
@@ -16,6 +17,7 @@
 <script setup>
 import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+
 const { t } = useI18n()
 
 defineProps({
