@@ -6,9 +6,21 @@
     </div>
 
     <div class="products-grid">
-      <div v-if="productStore.isloading" class="loading-state">
-        <i class="fa-solid fa-spinner fa-spin"></i> جاري جلب المنتجات...
-      </div>
+      <!-- Shimmer Skeleton Grid -->
+      <template v-if="productStore.isloading">
+        <div v-for="i in 8" :key="i" class="product-card-skeleton">
+          <div class="skeleton-shimmer skeleton-thumb"></div>
+          <div class="skeleton-card-body">
+            <div class="skeleton-shimmer skeleton-rate"></div>
+            <div class="skeleton-shimmer skeleton-title-row"></div>
+            <div class="skeleton-shimmer skeleton-title-row short"></div>
+            <div class="skeleton-card-footer">
+              <div class="skeleton-shimmer skeleton-price-tag"></div>
+              <div class="skeleton-shimmer skeleton-cart-btn"></div>
+            </div>
+          </div>
+        </div>
+      </template>
 
       <div v-else-if="displayedProducts.length === 0" class="empty-state">
         <i class="fa-solid fa-box-open empty-icon"></i>
@@ -24,26 +36,21 @@
       </template>
     </div>
     
-    <div class="pagination-nav" v-if="totalPages > 1">
+    <div class="pagination-nav" v-if="productStore.totalPages > 1 || productStore.hasMore || productStore.currentPage > 1">
       <button 
         class="page-btn" 
-        :disabled="productStore.currentPage === 1"
+        :disabled="productStore.currentPage === 1 || productStore.isloading"
         @click="changePage(productStore.currentPage - 1)"
       >السابق</button>
 
-      <template v-for="(page, index) in visiblePages" :key="index">
-        <span v-if="page === '...'" class="dots">...</span>
-        
-        <button 
-          v-else
-          :class="['page-btn', { active: productStore.currentPage === page }]"
-          @click="changePage(page)"
-        >{{ page }}</button>
-      </template>
+      <span class="pagination-info">
+        الصفحة {{ productStore.currentPage }} من {{ productStore.totalPages }}
+        <span class="total-items-badge" v-if="productStore.totalProductsCount">({{ productStore.totalProductsCount }} منتج إجمالاً)</span>
+      </span>
 
       <button 
         class="page-btn" 
-        :disabled="productStore.currentPage === totalPages"
+        :disabled="!productStore.hasMore || productStore.isloading"
         @click="changePage(productStore.currentPage + 1)"
       >التالي</button>
     </div>
@@ -52,7 +59,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useProductStore } from '../stores/productstore'
 import ProductCard from '../components/ProductCard.vue'
 import SharedFilter from '../components/SharedFilter.vue'
@@ -74,52 +81,18 @@ const displayedProducts = computed(() => {
   })
 })
 
-const totalPages = computed(() => {
-  return Math.ceil(displayedProducts.value.length / productStore.itemsPerPage) || 1
-})
-
-const visiblePages = computed(() => {
-  const total = totalPages.value;
-  const current = productStore.currentPage;
-
-  if (total <= 5) {
-    return Array.from({ length: total }, (_, i) => i + 1);
-  }
-  
-  const pages = [];
-  pages.push(1);
-  
-  if (current > 3) pages.push('...'); 
-  
-  const start = Math.max(2, current - 1);
-  const end = Math.min(total - 1, current + 1);
-  for (let i = start; i <= end; i++) {
-    pages.push(i);
-  }
-  
-  if (current < total - 2) pages.push('...');
-  
-  pages.push(total); 
-  
-  return pages;
-})
-
 const paginatedProducts = computed(() => {
-  const start = (productStore.currentPage - 1) * productStore.itemsPerPage
-  const end = start + productStore.itemsPerPage
-  return displayedProducts.value.slice(start, end)
+  return displayedProducts.value
 })
 
-const changePage = (pageNumber) => {
-  if (pageNumber >= 1 && pageNumber <= totalPages.value) {
-    productStore.currentPage = pageNumber
-    window.scrollTo({ top: 0, behavior: 'smooth' }) 
+const changePage = async (pageNumber) => {
+  if (pageNumber > productStore.currentPage) {
+    await productStore.nextPage()
+  } else if (pageNumber < productStore.currentPage) {
+    await productStore.prevPage()
   }
+  window.scrollTo({ top: 0, behavior: 'smooth' }) 
 }
-
-watch([() => productStore.searchQuery, selectedCategory], () => {
-  productStore.currentPage = 1
-})
 
 const translateCategory = (cat) => {
   if (!cat) return ''
@@ -132,9 +105,15 @@ const translateCategory = (cat) => {
   return translation
 }
 
+const availableCategories = [
+  'electronics', 'jewelery', 'mens clothing', 'womens clothing',
+  'kitchen-accessories', 'fragrances', 'laptops', 'groceries',
+  'home-decoration', 'furniture', 'mens-shoes', 'womens-shoes',
+  'mens-shirts', 'beauty', 'mens-watches', 'mobile-accessories'
+]
+
 const translatedCategories = computed(() => {
-  const uniqueCats = [...new Set(productStore.products.map(p => p.category))]
-  return uniqueCats.map(cat => ({
+  return availableCategories.map(cat => ({
     original: cat,
     translated: translateCategory(cat) 
   }))
@@ -142,6 +121,7 @@ const translatedCategories = computed(() => {
 
 const handleCategoryFilter = (category) => {
   selectedCategory.value = category
+  productStore.fetchProductsPage(1, { category, reset: true })
 }
 
 onMounted(() => {
@@ -166,7 +146,67 @@ onMounted(() => {
   gap: 25px;
 }
 
-.loading-state, .empty-state {
+/* Skeletons */
+.product-card-skeleton {
+  background: #ffffff;
+  border-radius: 16px;
+  border: 1px solid rgba(226, 232, 240, 0.8);
+  overflow: hidden;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.02);
+  display: flex;
+  flex-direction: column;
+}
+
+.skeleton-thumb {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+}
+
+.skeleton-card-body {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.skeleton-rate {
+  width: 90px;
+  height: 16px;
+  border-radius: 4px;
+}
+
+.skeleton-title-row {
+  width: 100%;
+  height: 18px;
+  border-radius: 4px;
+}
+
+.skeleton-title-row.short {
+  width: 65%;
+}
+
+.skeleton-card-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: 10px;
+  margin-top: 4px;
+  border-top: 1px solid #f1f5f9;
+}
+
+.skeleton-price-tag {
+  width: 70px;
+  height: 24px;
+  border-radius: 6px;
+}
+
+.skeleton-cart-btn {
+  width: 80px;
+  height: 36px;
+  border-radius: 8px;
+}
+
+.empty-state {
   grid-column: 1 / -1;
   text-align: center;
   padding: 80px 20px;
@@ -216,5 +256,20 @@ onMounted(() => {
 .page-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.pagination-info {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #475569;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.total-items-badge {
+  font-size: 0.85rem;
+  color: #64748b;
+  font-weight: 500;
 }
 </style>

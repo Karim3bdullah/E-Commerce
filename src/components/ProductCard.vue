@@ -1,9 +1,17 @@
 <script setup>
 import { useCartStore } from '../stores/cartStore'
+import { useWishlistStore } from '../stores/wishlistStore'
+import { auth } from '../firebase/config'
 import { useI18n } from 'vue-i18n'
+
 const { t } = useI18n()
-defineProps(['product'])
+const props = defineProps(['product'])
 const cartStore = useCartStore()
+const wishlistStore = useWishlistStore()
+
+const toggleFav = () => {
+  wishlistStore.toggleWishlist(props.product, auth.currentUser?.uid)
+}
 
 const translateCategory = (cat) => {
   if (!cat) return ''
@@ -21,6 +29,16 @@ const translateCategory = (cat) => {
       <span v-if="product.stock === 0" class="badge out-of-stock">نفذت الكمية</span>
       <span class="badge category-badge">{{ translateCategory(product.category) }}</span>
       
+      <button 
+        type="button" 
+        class="favorite-btn" 
+        :class="{ 'is-fav': wishlistStore.isInWishlist(product.id) }"
+        :title="wishlistStore.isInWishlist(product.id) ? 'إزالة من المفضلة' : 'إضافة للمفضلة'"
+        @click.prevent.stop="toggleFav"
+      >
+        <i :class="wishlistStore.isInWishlist(product.id) ? 'fa-solid fa-heart' : 'fa-regular fa-heart'"></i>
+      </button>
+
       <router-link :to="`/product/${product.id}`" class="img-link">
         <img :src="product.image" :alt="product.title" class="product-img">
       </router-link>
@@ -137,9 +155,41 @@ const translateCategory = (cat) => {
   box-shadow: 0 2px 8px rgba(0,0,0,0.05);
 }
 
+.favorite-btn {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(4px);
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #64748b;
+  cursor: pointer;
+  z-index: 5;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.favorite-btn:hover {
+  transform: scale(1.12);
+  color: #ef4444;
+  background: #ffffff;
+}
+
+.favorite-btn.is-fav {
+  color: #ef4444;
+  background: #fef2f2;
+  border-color: #fee2e2;
+}
+
 .out-of-stock {
-  top: 15px;
-  left: 15px;
+  top: 56px;
+  left: 14px;
   background: #ef4444;
   color: white;
   box-shadow: 0 4px 10px rgba(239, 68, 68, 0.3);

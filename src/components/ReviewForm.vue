@@ -1,10 +1,16 @@
 <script setup>
 import { ref } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { db, auth } from '../firebase/config'
-import { doc, runTransaction } from 'firebase/firestore'
+import { doc, collection, runTransaction, serverTimestamp } from 'firebase/firestore'
 import Swal from 'sweetalert2'
-import { useRouter } from 'vue-router'
+
+const props = defineProps({
+  productId: {
+    type: String,
+    default: ''
+  }
+})
 
 const route = useRoute()
 const router = useRouter()
@@ -25,19 +31,32 @@ const sendReview = async () => {
     return
   }
 
+  const prodId = props.productId || route.params.id
+  if (!prodId) {
+    Swal.fire({ icon: 'error', title: 'خطأ', text: 'معرف المنتج غير محدد' })
+    return
+  }
+
   loading.value = true
 
   try {
-    const itemRef = doc(db, 'products', route.params.id)
-    
+    const itemRef = doc(db, 'products', prodId)
+    const reviewsColRef = collection(db, 'products', prodId, 'reviews')
+    const newReviewRef = doc(reviewsColRef)
+
+    const currentDateStr = new Date().toLocaleDateString('ar-EG')
     const reviewData = {
-      id: Date.now().toString(),
       userId: auth.currentUser.uid,
       userName: auth.currentUser.displayName || 'مستخدم',
-      rating: rating.value,
-      comment: comment.value,
-      date: new Date().toLocaleDateString('ar-EG')
+      userPhoto: auth.currentUser.photoURL || null,
+      rating: Number(rating.value),
+      comment: comment.value.trim(),
+      date: currentDateStr,
+      createdAt: serverTimestamp()
     }
+
+    let updatedCount = 1
+    let updatedAverage = Number(rating.value)
 
     await runTransaction(db, async (transaction) => {
       const docSnap = await transaction.get(itemRef)
@@ -46,25 +65,35 @@ const sendReview = async () => {
       }
       
       const prodData = docSnap.data()
-      const oldRating = prodData.rating || { count: 0, rate: 0 }
-      const newCount = oldRating.count + 1
-      const totalOldScore = oldRating.rate * oldRating.count
-      const newRate = Number(((totalOldScore + rating.value) / newCount).toFixed(1))
-      
-      const currentReviews = prodData.reviews || []
+      const currentCount = Number(prodData.reviewCount ?? prodData.rating?.count ?? 0)
+      const currentRate = Number(prodData.averageRating ?? prodData.rating?.rate ?? 0)
 
+      updatedCount = currentCount + 1
+      const totalOldScore = currentRate * currentCount
+      updatedAverage = Number(((totalOldScore + Number(rating.value)) / updatedCount).toFixed(1))
+
+      // Write to subcollection: products/{productId}/reviews/{reviewId}
+      transaction.set(newReviewRef, reviewData)
+
+      // Atomically update parent product document aggregated rating
       transaction.update(itemRef, {
-        reviews: [...currentReviews, reviewData],
+        averageRating: updatedAverage,
+        reviewCount: updatedCount,
         rating: {
-          count: newCount,
-          rate: newRate
+          count: updatedCount,
+          rate: updatedAverage
         }
       })
     })
 
+    const emittedReview = {
+      id: newReviewRef.id,
+      ...reviewData
+    }
+
     comment.value = ''
     rating.value = 5
-    emit('reviewAdded', reviewData)
+    emit('reviewAdded', emittedReview)
 
     Swal.fire({ 
       icon: 'success', 
@@ -74,7 +103,7 @@ const sendReview = async () => {
     })
   } catch (err) {
     console.error("مشكلة في حفظ التقييم:", err)
-    Swal.fire({ icon: 'error', title: 'حدث خطأ أثناء الإرسال' })
+    Swal.fire({ icon: 'error', title: 'حدث خطأ أثناء الإرسال', text: err.message || 'حاول مجدداً لاحقاً.' })
   } finally {
     loading.value = false
   }

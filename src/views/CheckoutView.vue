@@ -121,14 +121,17 @@
 import { ref, onMounted } from 'vue'
 import { useCartStore } from '../stores/cartStore'
 import { db, auth } from '../firebase/config'
-import { collection, serverTimestamp, doc, getDoc, writeBatch, increment } from 'firebase/firestore'
+import { collection, serverTimestamp, doc, getDoc, runTransaction } from 'firebase/firestore'
 import { onAuthStateChanged } from 'firebase/auth'
 import { useRouter } from 'vue-router'
 import Swal from 'sweetalert2'
 import { useForm, useField } from 'vee-validate'
 import * as yup from 'yup'
 
+import { useSettingsStore } from '../stores/settingsStore'
+
 const cartStore = useCartStore()
+const settingsStore = useSettingsStore()
 const router = useRouter()
 const currentUserId = ref(null)
 
@@ -148,7 +151,8 @@ const { value: phone } = useField('phone')
 const { value: address } = useField('address')
 const { value: notes } = useField('notes')
 
-onMounted(() => {
+onMounted(async () => {
+  await cartStore.syncCartWithFirestore()
   onAuthStateChanged(auth, async (user) => {
     if (user) {
       currentUserId.value = user.uid
@@ -169,47 +173,131 @@ onMounted(() => {
 const handleCheckout = handleSubmit(async (values) => {
   if (cartStore.cart.length === 0) return
 
+  if (settingsStore.maintenanceMode) {
+    Swal.fire({
+      icon: 'warning',
+      title: 'وضع الصيانة مفعّل',
+      text: 'عفواً، المتجر يخضع للصيانة حالياً ولا يمكن إتمام عمليات الشراء مؤقتاً.'
+    })
+    return
+  }
+
   try {
-    const batch = writeBatch(db)
-    
     const newOrderRef = doc(collection(db, 'orders'))
 
-    const orderData = {
-      userId: currentUserId.value || 'guest', 
-      customer: {
-        ...values,
-        notes: values.notes || '' 
-      },
-      items: cartStore.cart,
-      totalPrice: cartStore.totalPrice,
-      totalItems: cartStore.totalItemsCount,
-      status: 'pending',
-      createdAt: serverTimestamp()
-    }
+    // Execute atomic transaction for checkout & stock decrement
+    await runTransaction(db, async (transaction) => {
+      // 1. Transaction Reads: Retrieve current authoritative state of all products in cart
+      const productSnapshots = []
+      for (const item of cartStore.cart) {
+        const productRef = doc(db, 'products', item.id)
+        const snap = await transaction.get(productRef)
 
-    batch.set(newOrderRef, orderData)
+        if (!snap.exists()) {
+          const err = new Error(`المنتج "${item.title}" لم يعد متوفراً في المتجر.`)
+          err.code = 'PRODUCT_NOT_FOUND'
+          throw err
+        }
 
-    cartStore.cart.forEach((item) => {
-      const productRef = doc(db, 'products', item.id)
-      batch.update(productRef, {
-        stock: increment(-item.quantity)
-      })
+        const data = snap.data()
+        const currentStock = typeof data.stock === 'number' ? data.stock : 0
+        const currentPrice = Number(data.price ?? 0)
+
+        productSnapshots.push({
+          ref: productRef,
+          item,
+          currentStock,
+          currentPrice,
+          title: data.title || item.title,
+          image: data.image || item.image
+        })
+      }
+
+      // 2. Transaction Validation & Authoritative Price Computation
+      let verifiedTotalPrice = 0
+      let verifiedTotalItems = 0
+      const verifiedItems = []
+
+      for (const { item, currentStock, currentPrice, title, image } of productSnapshots) {
+        if (currentStock < item.quantity) {
+          const err = new Error(
+            currentStock <= 0
+              ? `عفواً، نفذت كمية المنتج "${title}" تماماً أثناء قيامك بالطلب.`
+              : `عفواً، الكمية المطلوبة من "${title}" (${item.quantity}) غير متاحة. المتبقي في المخزون: ${currentStock} فقط.`
+          )
+          err.code = 'OUT_OF_STOCK'
+          err.productTitle = title
+          err.availableStock = currentStock
+          throw err
+        }
+
+        const lineSubtotal = currentPrice * item.quantity
+        verifiedTotalPrice += lineSubtotal
+        verifiedTotalItems += item.quantity
+        verifiedItems.push({
+          id: item.id,
+          title,
+          image,
+          price: currentPrice,
+          quantity: item.quantity,
+          subtotal: Number(lineSubtotal.toFixed(2))
+        })
+      }
+
+      // 3. Transaction Writes: Atomically decrement stock
+      for (const { ref, item, currentStock } of productSnapshots) {
+        transaction.update(ref, {
+          stock: currentStock - item.quantity
+        })
+      }
+
+      // 4. Transaction Writes: Commit order with server-calculated price
+      const orderData = {
+        userId: currentUserId.value || 'guest',
+        customer: {
+          ...values,
+          notes: values.notes || ''
+        },
+        items: verifiedItems,
+        totalPrice: Number(verifiedTotalPrice.toFixed(2)),
+        totalItems: verifiedTotalItems,
+        status: 'pending',
+        createdAt: serverTimestamp()
+      }
+
+      transaction.set(newOrderRef, orderData)
     })
 
-    await batch.commit()
+    // Reset local cart upon successful atomic commit
     cartStore.clearCart()
 
-    Swal.fire({
+    await Swal.fire({
       icon: 'success',
       title: 'تم إرسال طلبك بنجاح! 🎉',
       text: 'سنقوم بالتواصل معك قريباً لتأكيد الشحن.',
       confirmButtonText: 'العودة للرئيسية',
       confirmButtonColor: '#2563eb'
-    }).then(() => router.push('/'))
+    })
+    router.push('/')
 
   } catch (error) {
-    console.error("Firebase Error Details: ", error);
-    Swal.fire({ icon: 'error', title: 'حدث خطأ!', text: 'تعذر إرسال الطلب.' })
+    console.error("Firebase Checkout Error: ", error)
+    if (error.code === 'OUT_OF_STOCK' || error.code === 'PRODUCT_NOT_FOUND') {
+      Swal.fire({
+        icon: 'warning',
+        title: 'تنبيه في المخزون!',
+        text: error.message,
+        confirmButtonColor: '#f59e0b',
+        confirmButtonText: 'حسناً، مراجعة السلة'
+      })
+    } else {
+      Swal.fire({
+        icon: 'error',
+        title: 'حدث خطأ!',
+        text: error.message || 'تعذر إرسال الطلب، يرجى المحاولة لاحقاً.',
+        confirmButtonColor: '#ef4444'
+      })
+    }
   }
 })
 </script>

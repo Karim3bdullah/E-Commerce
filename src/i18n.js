@@ -58,7 +58,15 @@ const messages = {
       trackOrder: 'تتبع طلبك',
       securePayment: 'طرق الدفع الآمنة',
       paymentDesc: 'نقبل الدفع عبر الوسائل الآتية بكل أمان:',
-      rights: 'جميع الحقوق محفوظة © متجري الإلكتروني'
+      rights: 'جميع الحقوق محفوظة © متجري الإلكتروني',
+      aboutTitle: 'من نحن',
+      aboutContent: 'متجري هو وجهتك الأولى والآمنة للتسوق الإلكتروني في الشرق الأوسط. نسعى لتوفير تجربة تسوق استثنائية من خلال تشكيلة متنوعة من المنتجات الأصلية 100% بأفضل الأسعار وأسرع خدمات الشحن.',
+      contactTitle: 'تواصل معنا',
+      contactContent: 'فريق خدمة العملاء متواجد لمساعدتكم يومياً.<br>📧 البريد الإلكتروني: support@mystore.com<br>📞 الخط الساخن: 19999<br>💬 واتساب: 01000000000',
+      returnPolicyTitle: 'سياسة الاسترجاع والاستبدال',
+      returnPolicyContent: 'يمكنك استرجاع أو استبدال أي منتج خلال 14 يوماً من استلام الطلب بشرط أن يكون المنتج بحالته الأصلية وفي غلافه الأصلي غير مستخدم. يتم استرداد المبلغ بنفس وسيلة الدفع أو كرصيد فوري.',
+      faqTitle: 'الأسئلة الشائعة',
+      faqContent: '<strong>س: كم يستغرق التوصيل؟</strong><br>ج: يستغرق التوصيل من 1 إلى 3 أيام عمل حسب محافظتك.<br><br><strong>س: هل الدفع عند الاستلام متاح؟</strong><br>ج: نعم، نوفر خيار الدفع نقداً عند الاستلام لجميع المدن.'
     },
     home: {
       loadingProducts: 'جاري جلب المنتجات...',
@@ -242,7 +250,15 @@ const messages = {
       trackOrder: 'Track Order',
       securePayment: 'Secure Payment',
       paymentDesc: 'We accept secure payments via:',
-      rights: 'All rights reserved © MyStore'
+      rights: 'All rights reserved © MyStore',
+      aboutTitle: 'About Us',
+      aboutContent: 'MyStore is your premier, secure destination for online shopping. We provide an exceptional shopping experience with 100% genuine products, competitive prices, and fast delivery.',
+      contactTitle: 'Contact Us',
+      contactContent: 'Our customer support team is available daily.<br>📧 Email: support@mystore.com<br>📞 Hotline: 19999<br>💬 WhatsApp: 01000000000',
+      returnPolicyTitle: 'Return & Exchange Policy',
+      returnPolicyContent: 'You can return or exchange any item within 14 days of receipt, provided the item is in its original condition and unused packaging. Refunds are processed to the original payment method.',
+      faqTitle: 'Frequently Asked Questions',
+      faqContent: '<strong>Q: How long does delivery take?</strong><br>A: Delivery takes 1 to 3 business days depending on your location.<br><br><strong>Q: Is Cash on Delivery available?</strong><br>A: Yes, we offer Cash on Delivery across all locations.'
     },
     home: {
       loadingProducts: 'Fetching products...',

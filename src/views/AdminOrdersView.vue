@@ -1,7 +1,7 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { db } from '../firebase/config'
-import { collection, getDocs, orderBy, query, doc, updateDoc } from 'firebase/firestore'
+import { collection, getDocs, orderBy, query, doc, updateDoc, writeBatch, increment, limit, startAfter, getCountFromServer } from 'firebase/firestore'
 import AdminLayout from '../components/AdminLayout.vue'
 import Swal from 'sweetalert2'
 
@@ -11,29 +11,186 @@ const loading = ref(true)
 const selectedOrder = ref(null)
 const isModalOpen = ref(false)
 
-const loadOrders = async () => {
+const pageSize = 10
+const currentPage = ref(1)
+const totalOrdersCount = ref(0)
+const pageCursors = ref([])
+const hasMore = ref(false)
+
+const totalPages = computed(() => {
+  return Math.ceil(totalOrdersCount.value / pageSize) || 1
+})
+
+const fetchTotalCount = async () => {
   try {
-    const q = query(collection(db, 'orders'), orderBy('createdAt', 'desc'))
+    const countSnap = await getCountFromServer(collection(db, 'orders'))
+    totalOrdersCount.value = countSnap.data().count
+  } catch (e) {
+    console.warn("Could not fetch total orders count:", e)
+  }
+}
+
+const loadOrders = async (targetPage = 1) => {
+  loading.value = true
+  try {
+    if (totalOrdersCount.value === 0) {
+      await fetchTotalCount()
+    }
+
+    let q
+    const cursor = pageCursors.value[targetPage - 1]
+    if (targetPage > 1 && cursor) {
+      q = query(
+        collection(db, 'orders'),
+        orderBy('createdAt', 'desc'),
+        startAfter(cursor),
+        limit(pageSize)
+      )
+    } else {
+      q = query(
+        collection(db, 'orders'),
+        orderBy('createdAt', 'desc'),
+        limit(pageSize)
+      )
+    }
+
     const res = await getDocs(q)
-    
     list.value = res.docs.map(item => ({
       id: item.id,
       ...item.data()
     }))
+
+    if (res.docs.length > 0) {
+      pageCursors.value[targetPage] = res.docs[res.docs.length - 1]
+    }
+
+    hasMore.value = res.docs.length === pageSize
+    currentPage.value = targetPage
   } catch (err) {
-    console.log("مشكلة في جلب الطلبات:", err)
+    console.error("مشكلة في جلب الطلبات:", err)
   } finally {
     loading.value = false
   }
 }
 
+const nextPage = () => {
+  if (hasMore.value && !loading.value) {
+    loadOrders(currentPage.value + 1)
+  }
+}
+
+const prevPage = () => {
+  if (currentPage.value > 1 && !loading.value) {
+    loadOrders(currentPage.value - 1)
+  }
+}
+
 const updateStatus = async (orderId, newStatus) => {
+  const target = list.value.find(item => item.id === orderId)
+  if (!target || target.status === newStatus) return
+
+  const oldStatus = target.status
+
   try {
+    // Scenario 1: Order is transitioning to 'cancelled' -> Automatically restock inventory
+    if (newStatus === 'cancelled' && oldStatus !== 'cancelled') {
+      const confirmCancel = await Swal.fire({
+        title: 'تأكيد إلغاء الطلب؟',
+        text: 'سيتم إلغاء هذا الطلب وإرجاع كميات جميع المنتجات إلى المخزون تلقائياً.',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#ef4444',
+        cancelButtonColor: '#94a3b8',
+        confirmButtonText: 'نعم، ألغ الطلب واسترجع المخزون',
+        cancelButtonText: 'تراجع'
+      })
+
+      if (!confirmCancel.isConfirmed) return
+
+      const batch = writeBatch(db)
+      const orderRef = doc(db, 'orders', orderId)
+      batch.update(orderRef, { status: 'cancelled' })
+
+      if (Array.isArray(target.items)) {
+        for (const item of target.items) {
+          if (item.id && item.quantity > 0) {
+            const productRef = doc(db, 'products', item.id)
+            batch.update(productRef, {
+              stock: increment(item.quantity)
+            })
+          }
+        }
+      }
+
+      await batch.commit()
+      target.status = 'cancelled'
+      if (selectedOrder.value && selectedOrder.value.id === orderId) {
+        selectedOrder.value.status = 'cancelled'
+      }
+
+      Swal.fire({
+        icon: 'success',
+        title: 'تم الإلغاء واسترجاع المخزون',
+        text: 'تم تحديث حالة الطلب وإعادة الكميات للمخزون بنجاح.',
+        timer: 2500,
+        showConfirmButton: false
+      })
+      return
+    }
+
+    // Scenario 2: Re-opening a previously cancelled order -> Re-decrement stock
+    if (oldStatus === 'cancelled' && newStatus !== 'cancelled') {
+      const confirmReopen = await Swal.fire({
+        title: 'إعادة تفعيل الطلب؟',
+        text: 'هذا الطلب كان ملغياً وتم استرجاع مخزونه مسبقاً. هل تريد إعادة تفعيله وخصم كمياته من المخزون مجدداً؟',
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonColor: '#2563eb',
+        cancelButtonColor: '#94a3b8',
+        confirmButtonText: 'نعم، أعد التفعيل',
+        cancelButtonText: 'تراجع'
+      })
+
+      if (!confirmReopen.isConfirmed) return
+
+      const batch = writeBatch(db)
+      const orderRef = doc(db, 'orders', orderId)
+      batch.update(orderRef, { status: newStatus })
+
+      if (Array.isArray(target.items)) {
+        for (const item of target.items) {
+          if (item.id && item.quantity > 0) {
+            const productRef = doc(db, 'products', item.id)
+            batch.update(productRef, {
+              stock: increment(-item.quantity)
+            })
+          }
+        }
+      }
+
+      await batch.commit()
+      target.status = newStatus
+      if (selectedOrder.value && selectedOrder.value.id === orderId) {
+        selectedOrder.value.status = newStatus
+      }
+
+      Swal.fire({
+        icon: 'success',
+        title: 'تم التفعيل',
+        text: 'تمت إعادة تفعيل الطلب وتحديث المخزون بنجاح.',
+        timer: 2000,
+        showConfirmButton: false
+      })
+      return
+    }
+
+    // Scenario 3: Standard status transition (pending -> shipped -> completed)
     const orderRef = doc(db, 'orders', orderId)
     await updateDoc(orderRef, { status: newStatus })
-    
-    const target = list.value.find(item => item.id === orderId)
-    if (target) target.status = newStatus
+    target.status = newStatus
+    if (selectedOrder.value && selectedOrder.value.id === orderId) {
+      selectedOrder.value.status = newStatus
+    }
 
     Swal.fire({
       icon: 'success',
@@ -44,7 +201,12 @@ const updateStatus = async (orderId, newStatus) => {
       timer: 2000
     })
   } catch (err) {
-    console.log("خطأ في التحديث:", err)
+    console.error("خطأ في تحديث حالة الطلب:", err)
+    Swal.fire({
+      icon: 'error',
+      title: 'فشل التحديث',
+      text: 'تعذر تعديل حالة الطلب في قاعدة البيانات.'
+    })
   }
 }
 
@@ -73,7 +235,7 @@ const formatDate = (val) => {
     <div class="admin-container">
       <div class="header">
         <h1>إدارة الطلبات</h1>
-        <div class="stats">العدد: {{ list.length }}</div>
+        <div class="stats">إجمالي الطلبات: {{ totalOrdersCount || list.length }}</div>
       </div>
 
       <div v-if="loading" class="loading">
@@ -114,7 +276,7 @@ const formatDate = (val) => {
               <td class="price">${{ order.totalPrice.toFixed(2) }}</td>
               <td>
                 <span class="status-badge" :class="order.status">
-                  {{ order.status === 'pending' ? 'قيد الانتظار' : order.status === 'shipped' ? 'تم الشحن' : 'مكتمل' }}
+                  {{ order.status === 'pending' ? 'قيد الانتظار' : order.status === 'shipped' ? 'تم الشحن' : order.status === 'completed' ? 'مكتمل' : order.status === 'cancelled' ? 'ملغي' : order.status }}
                 </span>
               </td>
               <td>
@@ -128,12 +290,37 @@ const formatDate = (val) => {
                     <option value="pending">قيد الانتظار</option>
                     <option value="shipped">تم الشحن</option>
                     <option value="completed">مكتمل</option>
+                    <option value="cancelled">ملغي (استرجاع المخزون)</option>
                   </select>
                 </div>
               </td>
             </tr>
           </tbody>
         </table>
+      </div>
+
+      <!-- أزرار التنقل بين الصفحات السيرفرية -->
+      <div class="pagination-controls" v-if="totalPages > 1 || hasMore || currentPage > 1">
+        <button 
+          class="pagination-btn" 
+          :disabled="currentPage === 1 || loading" 
+          @click="prevPage"
+        >
+          <i class="fa-solid fa-chevron-right"></i> السابق
+        </button>
+
+        <span class="pagination-info">
+          الصفحة {{ currentPage }} من {{ totalPages }}
+          <span class="total-orders-badge" v-if="totalOrdersCount">({{ totalOrdersCount }} طلب إجمالاً)</span>
+        </span>
+
+        <button 
+          class="pagination-btn" 
+          :disabled="!hasMore || loading" 
+          @click="nextPage"
+        >
+          التالي <i class="fa-solid fa-chevron-left"></i>
+        </button>
       </div>
 
       <!-- نافذة تفاصيل الطلب المنبثقة (Modal) -->
@@ -146,7 +333,24 @@ const formatDate = (val) => {
           
           <div class="modal-body">
             <div class="customer-info-box">
-              <h3>بيانات العميل والشحن</h3>
+              <div class="modal-status-row">
+                <h3>بيانات العميل والشحن</h3>
+                <div class="modal-status-controls">
+                  <span class="status-badge" :class="selectedOrder.status">
+                    {{ selectedOrder.status === 'pending' ? 'قيد الانتظار' : selectedOrder.status === 'shipped' ? 'تم الشحن' : selectedOrder.status === 'completed' ? 'مكتمل' : selectedOrder.status === 'cancelled' ? 'ملغي' : selectedOrder.status }}
+                  </span>
+                  <select 
+                    class="status-select" 
+                    :value="selectedOrder.status" 
+                    @change="updateStatus(selectedOrder.id, $event.target.value)"
+                  >
+                    <option value="pending">قيد الانتظار</option>
+                    <option value="shipped">تم الشحن</option>
+                    <option value="completed">مكتمل</option>
+                    <option value="cancelled">ملغي (استرجاع المخزون)</option>
+                  </select>
+                </div>
+              </div>
               <p><strong>الاسم:</strong> {{ selectedOrder.customer.name }}</p>
               <p><strong>الهاتف:</strong> {{ selectedOrder.customer.phone }}</p>
               <p><strong>العنوان:</strong> {{ selectedOrder.customer.address }}</p>
@@ -289,6 +493,11 @@ const formatDate = (val) => {
   color: #16a34a;
 }
 
+.status-badge.cancelled {
+  background-color: #fee2e2;
+  color: #dc2626;
+}
+
 .action-buttons {
   display: flex;
   gap: 8px;
@@ -379,9 +588,23 @@ const formatDate = (val) => {
   color: #334155;
 }
 
+.modal-status-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.modal-status-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .customer-info-box h3 {
-  margin-top: 0;
-  margin-bottom: 10px;
+  margin: 0;
   font-size: 1rem;
   color: #1e293b;
 }
@@ -463,5 +686,56 @@ a {
 
 a:hover {
   text-decoration: underline;
+}
+
+.pagination-controls {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 15px;
+  margin-top: 25px;
+  padding: 10px 0;
+}
+
+.pagination-btn {
+  padding: 8px 18px;
+  background-color: white;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  font-family: inherit;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #334155;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.2s;
+}
+
+.pagination-btn:hover:not(:disabled) {
+  background-color: #2563eb;
+  color: white;
+  border-color: #2563eb;
+}
+
+.pagination-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.pagination-info {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #475569;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.total-orders-badge {
+  font-size: 0.85rem;
+  color: #64748b;
+  font-weight: 500;
 }
 </style>

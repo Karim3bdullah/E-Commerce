@@ -67,7 +67,7 @@
                 <div class="order-price-status">
                   <span class="price">${{ order.totalPrice?.toFixed(2) }}</span>
                   <span :class="['status-pill', order.status]">
-                    {{ order.status === 'pending' ? 'انتظار' : order.status === 'shipped' ? 'مشحون' : 'مكتمل' }}
+                    {{ order.status === 'pending' ? 'انتظار' : order.status === 'shipped' ? 'مشحون' : order.status === 'cancelled' ? 'ملغي' : 'مكتمل' }}
                   </span>
                 </div>
               </li>
@@ -341,6 +341,7 @@ onMounted(async () => {
 .status-pill.pending { background: #fef3c7; color: #d97706; }
 .status-pill.shipped { background: #e0f2fe; color: #0284c7; }
 .status-pill.completed { background: #dcfce7; color: #16a34a; }
+.status-pill.cancelled { background: #fee2e2; color: #dc2626; }
 
 .prod-info {
   display: flex;

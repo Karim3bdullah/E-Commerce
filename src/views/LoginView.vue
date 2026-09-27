@@ -16,6 +16,70 @@ const phone = ref('')
 
 const isLoading = ref(false)
 const isLoginMode = ref(true)
+const demoLoadingRole = ref(null)
+
+const directDemoLogin = async (role) => {
+  clearErrors()
+  demoLoadingRole.value = role
+
+  const credentials = {
+    admin: { email: 'karim@gmail.com', pass: 'password' },
+    customer: { email: 'admin@gmail.com', pass: 'password' }
+  }
+
+  const { email: demoEmail, pass: demoPass } = credentials[role]
+
+  try {
+    const userCredential = await signInWithEmailAndPassword(auth, demoEmail, demoPass)
+    const userDoc = await getDoc(doc(db, 'users', userCredential.user.uid))
+
+    if (userDoc.exists() && userDoc.data().status === 'banned') {
+      await signOut(auth)
+      Swal.fire({
+        icon: 'error',
+        title: 'حساب موقوف',
+        text: 'عفواً، هذا الحساب موقوف.',
+        confirmButtonColor: '#ef4444'
+      })
+      demoLoadingRole.value = null
+      return
+    }
+
+    const toastMsg = role === 'admin' 
+      ? 'تم تسجيل الدخول بنجاح كمدير للمتجر (Demo Admin) ✨' 
+      : 'تم تسجيل الدخول بنجاح كعميل (Demo Customer) 🛍️'
+
+    const Toast = Swal.mixin({
+      toast: true,
+      position: 'top-end',
+      showConfirmButton: false,
+      timer: 2000,
+      timerProgressBar: true,
+      background: '#ffffff',
+      color: '#0f172a'
+    })
+
+    Toast.fire({
+      icon: 'success',
+      title: toastMsg
+    })
+
+    if (role === 'admin' || (userDoc.exists() && userDoc.data().role === 'admin')) {
+      router.push('/admin/dashboard')
+    } else {
+      router.push('/')
+    }
+  } catch (error) {
+    console.error("Demo login error:", error)
+    Swal.fire({
+      icon: 'error',
+      title: 'خطأ في الدخول التجريبي',
+      text: 'تعذر تسجيل الدخول بالحساب التجريبي حالياً.'
+    })
+  } finally {
+    demoLoadingRole.value = null
+  }
+}
 
 const generalAuthError = ref('')
 const emailError = ref('')
@@ -189,38 +253,78 @@ const handleSubmit = async () => {
 
         <div class="form-group">
           <label>البريد الإلكتروني</label>
-          <input v-model="email" type="email" placeholder="name@example.com" :class="{ 'input-error': emailError || generalAuthError }">
+          <input 
+            v-model="email" 
+            type="email" 
+            placeholder="name@example.com" 
+            :class="{ 'input-error': emailError || generalAuthError }"
+          >
           <span v-if="emailError" class="error-text">{{ emailError }}</span>
         </div>
 
         <div class="form-group">
           <label>كلمة المرور</label>
-          <input v-model="password" type="password" placeholder="••••••••" :class="{ 'input-error': passwordError || generalAuthError }">
+          <input 
+            v-model="password" 
+            type="password" 
+            placeholder="••••••••" 
+            :class="{ 'input-error': passwordError || generalAuthError }"
+          >
           <span v-if="passwordError" class="error-text">{{ passwordError }}</span>
         </div>
 
-        <button type="submit" class="submit-btn" :disabled="isLoading">
+        <button type="submit" class="submit-btn" :disabled="isLoading || demoLoadingRole !== null">
           <div v-if="isLoading" class="loading-content">
             <div class="btn-spinner"></div> جاري المعالجة...
           </div>
           <span v-else>{{ isLoginMode ? 'دخول' : 'إنشاء الحساب' }}</span>
         </button>
         
-        <div v-if="isLoginMode" class="test-credentials">
-          <p class="test-title"><i class="fa-solid fa-circle-info"></i> بيانات للتجربة السريعة:</p>
-          <div class="test-boxes">
-            <div class="test-box" @click="email='karim@gmail.com'; password='password'">
-              <span class="role">المدير (Admin)</span>
-              <span>karim@gmail.com</span>
-              <span>password</span>
+        <!-- Recruiter & Portfolio Quick Demo Access -->
+        <div v-if="isLoginMode" class="portfolio-demo-card">
+          <div class="demo-card-header">
+            <div class="header-left">
+              <span class="live-status-dot"></span>
+              <span class="demo-badge-text">Recruiter & Demo Access</span>
             </div>
-            <div class="test-box" @click="email='admin@gmail.com'; password='password'">
-              <span class="role">العميل (User)</span>
-              <span>admin@gmail.com</span>
-              <span>password</span>
-            </div>
+            <span class="demo-pill-sub">دخول مباشر بنقرة واحدة (بدون ملء يدوي)</span>
           </div>
-          <p class="hint-text">اضغط على أي صندوق لملء البيانات تلقائياً</p>
+          
+          <div class="demo-pills-grid">
+            <button 
+              type="button" 
+              class="demo-pill-btn admin-theme"
+              :disabled="demoLoadingRole !== null || isLoading"
+              @click="directDemoLogin('admin')"
+            >
+              <div class="pill-icon-box">
+                <i v-if="demoLoadingRole === 'admin'" class="fa-solid fa-circle-notch fa-spin"></i>
+                <i v-else class="fa-solid fa-shield-halved"></i>
+              </div>
+              <div class="pill-info">
+                <span class="pill-title">Direct Preview: Store Admin</span>
+                <span class="pill-tag">لوحة تحكم المدير والإحصائيات</span>
+              </div>
+              <i class="fa-solid fa-arrow-left auto-icon"></i>
+            </button>
+
+            <button 
+              type="button" 
+              class="demo-pill-btn customer-theme"
+              :disabled="demoLoadingRole !== null || isLoading"
+              @click="directDemoLogin('customer')"
+            >
+              <div class="pill-icon-box">
+                <i v-if="demoLoadingRole === 'customer'" class="fa-solid fa-circle-notch fa-spin"></i>
+                <i v-else class="fa-solid fa-bag-shopping"></i>
+              </div>
+              <div class="pill-info">
+                <span class="pill-title">Direct Preview: Customer</span>
+                <span class="pill-tag">واجهة العميل وتجربة الشراء</span>
+              </div>
+              <i class="fa-solid fa-arrow-left auto-icon"></i>
+            </button>
+          </div>
         </div>
       </form>
 
@@ -417,64 +521,203 @@ h2 {
   100% { transform: rotate(360deg); }
 }
 
-.test-credentials {
-  margin-top: 25px;
-  background-color: #f8fafc;
-  padding: 15px;
-  border-radius: 12px;
-  border: 1px dashed #cbd5e1;
+/* Micro-interaction visual pulse on input fields */
+.field-pulse {
+  animation: fieldGlow 0.9s cubic-bezier(0.2, 0.8, 0.2, 1);
+  border-color: #2563eb !important;
 }
 
-.test-title {
-  margin: 0 0 15px 0;
-  font-size: 0.9rem;
-  font-weight: 700;
-  color: #475569;
+@keyframes fieldGlow {
+  0% {
+    box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.4);
+    background-color: #eff6ff;
+  }
+  50% {
+    box-shadow: 0 0 0 5px rgba(37, 99, 235, 0.2);
+    background-color: #ffffff;
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(37, 99, 235, 0);
+  }
+}
+
+/* Handcrafted Portfolio Recruiter Demo Card */
+.portfolio-demo-card {
+  margin-top: 24px;
+  background: linear-gradient(145deg, #ffffff 0%, #f8fafc 100%);
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 16px 18px;
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.04);
+  position: relative;
+  overflow: hidden;
+}
+
+.portfolio-demo-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  height: 3px;
+  background: linear-gradient(90deg, #2563eb, #38bdf8);
+}
+
+.demo-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.header-left {
   display: flex;
   align-items: center;
   gap: 8px;
 }
 
-.test-boxes {
-  display: flex;
-  gap: 15px;
+.live-status-dot {
+  width: 8px;
+  height: 8px;
+  background-color: #10b981;
+  border-radius: 50%;
+  display: inline-block;
+  animation: liveDotPulse 2s infinite;
 }
 
-.test-box {
-  flex: 1;
-  background-color: white;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  padding: 12px;
+@keyframes liveDotPulse {
+  0% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+  }
+  70% {
+    transform: scale(1);
+    box-shadow: 0 0 0 6px rgba(16, 185, 129, 0);
+  }
+  100% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
+  }
+}
+
+.demo-badge-text {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #1e293b;
+  letter-spacing: 0.3px;
+}
+
+.demo-pill-sub {
+  font-size: 0.75rem;
+  color: #64748b;
+  font-weight: 500;
+}
+
+.demo-pills-grid {
   display: flex;
-  flex-direction: column;
-  gap: 5px;
+  gap: 12px;
+}
+
+.demo-pill-btn {
+  flex: 1;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
   cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  text-align: right;
+  position: relative;
+  font-family: inherit;
+}
+
+.demo-pill-btn:hover {
+  transform: translateY(-2px);
+  border-color: #cbd5e1;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.05);
+}
+
+.pill-icon-box {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.95rem;
+  flex-shrink: 0;
   transition: all 0.2s ease;
 }
 
-.test-box:hover {
-  border-color: #2563eb;
-  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.1);
-  transform: translateY(-2px);
+.admin-theme .pill-icon-box {
+  background-color: #f3e8ff;
+  color: #7e22ce;
 }
 
-.test-box span {
+.customer-theme .pill-icon-box {
+  background-color: #eff6ff;
+  color: #2563eb;
+}
+
+.pill-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.pill-title {
   font-size: 0.85rem;
-  color: #64748b;
-  word-break: break-all;
-}
-
-.test-box .role {
   font-weight: 700;
   color: #1e293b;
-  margin-bottom: 5px;
 }
 
-.hint-text {
-  margin: 15px 0 0 0;
-  font-size: 0.8rem;
+.pill-tag {
+  font-size: 0.72rem;
+  color: #64748b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.auto-icon {
+  font-size: 0.75rem;
   color: #94a3b8;
-  text-align: center;
+  opacity: 0.6;
+  transition: all 0.2s ease;
+}
+
+.demo-pill-btn:hover .auto-icon {
+  color: #2563eb;
+  opacity: 1;
+  transform: scale(1.1);
+}
+
+.demo-pill-btn.active-pill {
+  border-color: #2563eb;
+  background-color: #f8fafc;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
+}
+
+.admin-theme.active-pill {
+  border-color: #7e22ce;
+  box-shadow: 0 0 0 2px rgba(126, 34, 206, 0.15);
+}
+
+.admin-theme.active-pill .auto-icon {
+  color: #7e22ce;
+  opacity: 1;
+}
+
+@media (max-width: 480px) {
+  .demo-pills-grid {
+    flex-direction: column;
+  }
 }
 </style>

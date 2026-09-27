@@ -2,6 +2,7 @@
 import { RouterView, useRoute } from 'vue-router'
 import Navbar from './components/Navbar.vue' 
 import Footer from './components/Footer.vue';
+import MiniCartDrawer from './components/MiniCartDrawer.vue';
 
 const route = useRoute()
 </script>
@@ -12,6 +13,8 @@ const route = useRoute()
   <RouterView />
   
   <Footer v-if="!route.meta.hideNavFooter" />
+
+  <MiniCartDrawer />
 </template>
 
 <style>

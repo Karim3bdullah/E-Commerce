@@ -91,9 +91,14 @@
 </template>
 
 <script setup>
+import { onMounted } from 'vue'
 import { useCartStore } from '../stores/cartStore'
 
 const cartStore = useCartStore()
+
+onMounted(() => {
+  cartStore.syncCartWithFirestore()
+})
 </script>
 
 <style scoped>

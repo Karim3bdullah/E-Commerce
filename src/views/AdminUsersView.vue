@@ -3,7 +3,7 @@
     <div class="admin-container">
       <div class="header">
         <h1>إدارة المستخدمين</h1>
-        <div class="stats">إجمالي المستخدمين: {{ usersList.length }}</div>
+        <div class="stats">إجمالي المستخدمين: {{ totalUsersCount || usersList.length }}</div>
       </div>
 
       <div v-if="loading" class="loading-state">
@@ -75,34 +75,116 @@
           </tbody>
         </table>
       </div>
+
+      <!-- أزرار التنقل بين الصفحات السيرفرية -->
+      <div class="pagination-controls" v-if="totalPages > 1 || hasMore || currentPage > 1">
+        <button 
+          class="pagination-btn" 
+          :disabled="currentPage === 1 || loading" 
+          @click="prevPage"
+        >
+          <i class="fa-solid fa-chevron-right"></i> السابق
+        </button>
+
+        <span class="pagination-info">
+          الصفحة {{ currentPage }} من {{ totalPages }}
+          <span class="total-users-badge" v-if="totalUsersCount">({{ totalUsersCount }} مستخدم إجمالاً)</span>
+        </span>
+
+        <button 
+          class="pagination-btn" 
+          :disabled="!hasMore || loading" 
+          @click="nextPage"
+        >
+          التالي <i class="fa-solid fa-chevron-left"></i>
+        </button>
+      </div>
     </div>
   </AdminLayout>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { db, auth } from '../firebase/config'
-import { collection, getDocs, doc, updateDoc, orderBy, query } from 'firebase/firestore'
+import { collection, getDocs, doc, updateDoc, orderBy, query, limit, startAfter, getCountFromServer } from 'firebase/firestore'
 import AdminLayout from '../components/AdminLayout.vue'
 import Swal from 'sweetalert2'
 
 const usersList = ref([])
 const loading = ref(true)
 
-// جلب المستخدمين
-const fetchUsers = async () => {
+const pageSize = 10
+const currentPage = ref(1)
+const totalUsersCount = ref(0)
+const pageCursors = ref([])
+const hasMore = ref(false)
+
+const totalPages = computed(() => {
+  return Math.ceil(totalUsersCount.value / pageSize) || 1
+})
+
+const fetchTotalCount = async () => {
   try {
-    const q = query(collection(db, 'users'), orderBy('createdAt', 'desc'))
+    const countSnap = await getCountFromServer(collection(db, 'users'))
+    totalUsersCount.value = countSnap.data().count
+  } catch (e) {
+    console.warn("Could not fetch total users count:", e)
+  }
+}
+
+// جلب المستخدمين بـ Cursor Pagination
+const fetchUsers = async (targetPage = 1) => {
+  loading.value = true
+  try {
+    if (totalUsersCount.value === 0) {
+      await fetchTotalCount()
+    }
+
+    let q
+    const cursor = pageCursors.value[targetPage - 1]
+    if (targetPage > 1 && cursor) {
+      q = query(
+        collection(db, 'users'),
+        orderBy('createdAt', 'desc'),
+        startAfter(cursor),
+        limit(pageSize)
+      )
+    } else {
+      q = query(
+        collection(db, 'users'),
+        orderBy('createdAt', 'desc'),
+        limit(pageSize)
+      )
+    }
+
     const querySnapshot = await getDocs(q)
-    
     usersList.value = querySnapshot.docs.map(doc => ({
       id: doc.id,
       ...doc.data()
     }))
+
+    if (querySnapshot.docs.length > 0) {
+      pageCursors.value[targetPage] = querySnapshot.docs[querySnapshot.docs.length - 1]
+    }
+
+    hasMore.value = querySnapshot.docs.length === pageSize
+    currentPage.value = targetPage
   } catch (error) {
     console.error("خطأ في جلب المستخدمين:", error)
   } finally {
     loading.value = false
+  }
+}
+
+const nextPage = () => {
+  if (hasMore.value && !loading.value) {
+    fetchUsers(currentPage.value + 1)
+  }
+}
+
+const prevPage = () => {
+  if (currentPage.value > 1 && !loading.value) {
+    fetchUsers(currentPage.value - 1)
   }
 }
 
@@ -322,4 +404,55 @@ const toggleRole = async (user) => {
 
 .unban { background: #dcfce7; color: #10b981; }
 .unban:hover { background: #bbf7d0; }
+
+.pagination-controls {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 15px;
+  margin-top: 25px;
+  padding: 10px 0;
+}
+
+.pagination-btn {
+  padding: 8px 18px;
+  background-color: white;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  font-family: inherit;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #334155;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.2s;
+}
+
+.pagination-btn:hover:not(:disabled) {
+  background-color: #2563eb;
+  color: white;
+  border-color: #2563eb;
+}
+
+.pagination-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.pagination-info {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #475569;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.total-users-badge {
+  font-size: 0.85rem;
+  color: #64748b;
+  font-weight: 500;
+}
 </style>

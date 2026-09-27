@@ -61,6 +61,11 @@ const handleLogout = async () => {
             <i class="fa-solid fa-users"></i> إدارة المستخدمين
           </RouterLink>
         </li>
+        <li>
+          <RouterLink to="/admin/settings" class="menu-link" :class="{ active: route.path === '/admin/settings' }">
+            <i class="fa-solid fa-sliders"></i> إعدادات المتجر والهوية
+          </RouterLink>
+        </li>
         
         <hr class="divider">
         <li>

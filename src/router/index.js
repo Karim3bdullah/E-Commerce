@@ -3,6 +3,7 @@ import HomeView from '../views/Homeview.vue'
 import { auth, db } from '../firebase/config.js'
 import { doc, getDoc } from 'firebase/firestore'
 import Swal from 'sweetalert2' 
+import { useSettingsStore } from '../stores/settingsStore' 
 
 let cachedAdminStatus = null
 let cachedUserUid = null
@@ -20,11 +21,19 @@ const router = createRouter({
     { path: '/admin/users', name: 'admin-users', component: () => import('../views/AdminUsersView.vue'), meta: { hideNavFooter: true, requiresAuth: true, requiresAdmin: true } },
     { path: '/admin/orders', name: 'admin-orders', component: () => import('../views/AdminOrdersView.vue'), meta: { hideNavFooter: true, requiresAuth: true, requiresAdmin: true } },
     { path: '/admin/products', name: 'admin-products', component: () => import('../views/AdminProductsView.vue'), meta: { hideNavFooter: true, requiresAuth: true, requiresAdmin: true } },
+    { path: '/admin/settings', name: 'admin-settings', component: () => import('../views/AdminSettingsView.vue'), meta: { hideNavFooter: true, requiresAuth: true, requiresAdmin: true } },
     { path: '/profile', name: 'profile', component: () => import('../views/ProfileView.vue'), meta: { requiresAuth: true } },
+    { path: '/wishlist', name: 'wishlist', component: () => import('../views/WishlistView.vue') },
+    { path: '/maintenance', name: 'maintenance', component: () => import('../views/MaintenanceView.vue'), meta: { hideNavFooter: true } },
   ]
 })
 
 router.beforeEach(async (to, from) => {
+  const settingsStore = useSettingsStore()
+  if (!settingsStore.isLoaded) {
+    settingsStore.fetchSettings()
+  }
+
   const requiresAuth = to.matched.some(record => record.meta.requiresAuth)
   const requiresAdmin = to.matched.some(record => record.meta.requiresAdmin)
   const requiresGuest = to.matched.some(record => record.meta.requiresGuest)
@@ -39,11 +48,9 @@ router.beforeEach(async (to, from) => {
   }
 
   const currentUser = await getCurrentUser()
+  let isAdminUser = false
 
-  if (requiresGuest && currentUser) return '/'
-  if (requiresAuth && !currentUser) return '/login'
-
-  if (requiresAdmin && currentUser) {
+  if (currentUser) {
     if (cachedUserUid !== currentUser.uid) {
       cachedAdminStatus = null
       cachedUserUid = currentUser.uid
@@ -59,8 +66,23 @@ router.beforeEach(async (to, from) => {
         cachedAdminStatus = false
       }
     }
+    isAdminUser = Boolean(cachedAdminStatus)
+  }
 
-    if (cachedAdminStatus) {
+  // Global Maintenance Mode check
+  if (settingsStore.maintenanceMode && !isAdminUser) {
+    if (to.path !== '/maintenance' && to.path !== '/login') {
+      return '/maintenance'
+    }
+  } else if (!settingsStore.maintenanceMode && to.path === '/maintenance') {
+    return '/'
+  }
+
+  if (requiresGuest && currentUser) return '/'
+  if (requiresAuth && !currentUser) return '/login'
+
+  if (requiresAdmin && currentUser) {
+    if (isAdminUser) {
       return true
     } else {
       Swal.fire({
