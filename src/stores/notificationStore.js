@@ -69,17 +69,21 @@ export const useNotificationStore = defineStore('notificationStore', () => {
 
       unsubscribeSnapshot = onSnapshot(q, async (snapshot) => {
         if (snapshot.empty) {
-          // Seed initial notifications for this user if first time
-          for (const item of defaultNotifications) {
-            const notiDocRef = doc(db, 'users', userId, 'notifications', item.id)
-            await setDoc(notiDocRef, {
-              title: item.title,
-              message: item.message,
-              type: item.type,
-              targetRoute: item.targetRoute,
-              read: item.read,
-              createdAt: serverTimestamp()
-            }, { merge: true })
+          notifications.value = defaultNotifications
+          try {
+            for (const item of defaultNotifications) {
+              const notiDocRef = doc(db, 'users', userId, 'notifications', item.id)
+              await setDoc(notiDocRef, {
+                title: item.title,
+                message: item.message,
+                type: item.type,
+                targetRoute: item.targetRoute,
+                read: item.read,
+                createdAt: serverTimestamp()
+              }, { merge: true })
+            }
+          } catch (seedErr) {
+            // Seed failed due to permissions or offline, keep in-memory defaults
           }
         } else {
           notifications.value = snapshot.docs.map(docSnap => ({
@@ -88,13 +92,11 @@ export const useNotificationStore = defineStore('notificationStore', () => {
           }))
         }
       }, (err) => {
-        console.warn("Notifications listener fallback:", err)
         notifications.value = defaultNotifications
       })
 
       isListening.value = true
     } catch (e) {
-      console.warn("Firestore notification error:", e)
       notifications.value = defaultNotifications
     }
   }

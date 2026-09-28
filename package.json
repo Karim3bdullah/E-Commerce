@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "cors:apply": "gcloud storage buckets update gs://ecommerce-2e876.firebasestorage.app --cors-file=cors.json",
+    "cors:gsutil": "gsutil cors set cors.json gs://ecommerce-2e876.firebasestorage.app"
   },
   "dependencies": {
     "firebase": "^12.16.0",

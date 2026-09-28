@@ -36,13 +36,16 @@ const selectedCategory = ref('')
 .filter-container {
     position: relative;
     width: 100%;
-    max-width: 250px;
+    max-width: 260px;
 }
 .filter-select {
     width: 100%;
-    padding: 10px 15px 10px 40px;
+    min-height: 44px;
+    padding-inline-start: 16px;
+    padding-inline-end: 42px;
+    padding-block: 10px;
     border: 1px solid #cbd5e1;
-    border-radius: 8px;
+    border-radius: 10px;
     font-family: inherit;
     font-size: 0.95rem;
     color: #1e293b;
@@ -58,10 +61,17 @@ const selectedCategory = ref('')
 }
 .select-icon {
     position: absolute;
-    left: 15px;
+    inset-inline-end: 15px;
     top: 50%;
     transform: translateY(-50%);
     color: #94a3b8;
     pointer-events: none;
+    font-size: 0.85rem;
+}
+
+@media (max-width: 480px) {
+    .filter-container {
+        max-width: 100%;
+    }
 }
 </style>

@@ -1,9 +1,15 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { db } from '../firebase/config'
-import { collection, getDocs, orderBy, query, doc, updateDoc, writeBatch, increment, limit, startAfter, getCountFromServer } from 'firebase/firestore'
+import { collection, getDocs, orderBy, query, doc, getDoc, updateDoc, writeBatch, increment, limit, startAfter, getCountFromServer } from 'firebase/firestore'
 import AdminLayout from '../components/AdminLayout.vue'
 import Swal from 'sweetalert2'
+
+const route = useRoute()
+const { t, locale } = useI18n()
+const isRtl = computed(() => locale.value === 'ar')
 
 const list = ref([])
 const loading = ref(true)
@@ -67,7 +73,7 @@ const loadOrders = async (targetPage = 1) => {
     hasMore.value = res.docs.length === pageSize
     currentPage.value = targetPage
   } catch (err) {
-    console.error("مشكلة في جلب الطلبات:", err)
+    console.error("Error fetching orders:", err)
   } finally {
     loading.value = false
   }
@@ -95,14 +101,14 @@ const updateStatus = async (orderId, newStatus) => {
     // Scenario 1: Order is transitioning to 'cancelled' -> Automatically restock inventory
     if (newStatus === 'cancelled' && oldStatus !== 'cancelled') {
       const confirmCancel = await Swal.fire({
-        title: 'تأكيد إلغاء الطلب؟',
-        text: 'سيتم إلغاء هذا الطلب وإرجاع كميات جميع المنتجات إلى المخزون تلقائياً.',
+        title: t('admin.confirmCancelTitle'),
+        text: t('admin.confirmCancelText'),
         icon: 'warning',
         showCancelButton: true,
         confirmButtonColor: '#ef4444',
         cancelButtonColor: '#94a3b8',
-        confirmButtonText: 'نعم، ألغ الطلب واسترجع المخزون',
-        cancelButtonText: 'تراجع'
+        confirmButtonText: t('admin.confirmCancelBtn'),
+        cancelButtonText: t('common.cancel')
       })
 
       if (!confirmCancel.isConfirmed) return
@@ -130,8 +136,8 @@ const updateStatus = async (orderId, newStatus) => {
 
       Swal.fire({
         icon: 'success',
-        title: 'تم الإلغاء واسترجاع المخزون',
-        text: 'تم تحديث حالة الطلب وإعادة الكميات للمخزون بنجاح.',
+        title: t('admin.cancelSuccessTitle'),
+        text: t('admin.cancelSuccessText'),
         timer: 2500,
         showConfirmButton: false
       })
@@ -141,14 +147,14 @@ const updateStatus = async (orderId, newStatus) => {
     // Scenario 2: Re-opening a previously cancelled order -> Re-decrement stock
     if (oldStatus === 'cancelled' && newStatus !== 'cancelled') {
       const confirmReopen = await Swal.fire({
-        title: 'إعادة تفعيل الطلب؟',
-        text: 'هذا الطلب كان ملغياً وتم استرجاع مخزونه مسبقاً. هل تريد إعادة تفعيله وخصم كمياته من المخزون مجدداً؟',
+        title: t('admin.confirmReopenTitle'),
+        text: t('admin.confirmReopenText'),
         icon: 'question',
         showCancelButton: true,
         confirmButtonColor: '#2563eb',
         cancelButtonColor: '#94a3b8',
-        confirmButtonText: 'نعم، أعد التفعيل',
-        cancelButtonText: 'تراجع'
+        confirmButtonText: t('admin.yesReopen'),
+        cancelButtonText: t('common.cancel')
       })
 
       if (!confirmReopen.isConfirmed) return
@@ -176,8 +182,8 @@ const updateStatus = async (orderId, newStatus) => {
 
       Swal.fire({
         icon: 'success',
-        title: 'تم التفعيل',
-        text: 'تمت إعادة تفعيل الطلب وتحديث المخزون بنجاح.',
+        title: t('admin.reopenSuccessTitle'),
+        text: t('admin.reopenSuccessText'),
         timer: 2000,
         showConfirmButton: false
       })
@@ -194,18 +200,18 @@ const updateStatus = async (orderId, newStatus) => {
 
     Swal.fire({
       icon: 'success',
-      title: 'تم التحديث بنجاح',
+      title: t('admin.updateStatusSuccess'),
       toast: true,
       position: 'top-end',
       showConfirmButton: false,
       timer: 2000
     })
   } catch (err) {
-    console.error("خطأ في تحديث حالة الطلب:", err)
+    console.error("Error updating order status:", err)
     Swal.fire({
       icon: 'error',
-      title: 'فشل التحديث',
-      text: 'تعذر تعديل حالة الطلب في قاعدة البيانات.'
+      title: t('admin.updateFailed'),
+      text: t('admin.updateFailedText')
     })
   }
 }
@@ -220,13 +226,33 @@ const closeOrderDetails = () => {
   isModalOpen.value = false
 }
 
-onMounted(() => {
-  loadOrders()
+onMounted(async () => {
+  await loadOrders()
+
+  if (route.query.orderId) {
+    const target = list.value.find(o => o.id === route.query.orderId)
+    if (target) {
+      openOrderDetails(target)
+    } else {
+      try {
+        const orderSnap = await getDoc(doc(db, 'orders', route.query.orderId))
+        if (orderSnap.exists()) {
+          openOrderDetails({ id: orderSnap.id, ...orderSnap.data() })
+        }
+      } catch (err) {
+        console.warn("Could not fetch order from query param:", err)
+      }
+    }
+  }
 })
 
 const formatDate = (val) => {
-  if (!val) return 'قيد التجهيز'
-  return val.toDate().toLocaleDateString('ar-EG')
+  if (!val) return '...'
+  return val.toDate().toLocaleDateString(locale.value === 'ar' ? 'ar-EG' : 'en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric'
+  })
 }
 </script>
 
@@ -234,63 +260,71 @@ const formatDate = (val) => {
   <AdminLayout>
     <div class="admin-container">
       <div class="header">
-        <h1>إدارة الطلبات</h1>
-        <div class="stats">إجمالي الطلبات: {{ totalOrdersCount || list.length }}</div>
+        <div>
+          <h1>{{ t('admin.ordersManage') }}</h1>
+        </div>
+        <div class="stats">
+          {{ t('admin.totalOrders') }}: {{ totalOrdersCount || list.length }}
+        </div>
       </div>
 
       <div v-if="loading" class="loading">
-        ثواني بنحمل الداتا...
+        <i class="fa-solid fa-spinner fa-spin"></i> {{ t('admin.loadingData') }}
       </div>
 
       <div v-else-if="list.length === 0" class="empty-state">
-        مفيش أي طلبات لحد دلوقتي.
+        <i class="fa-solid fa-box-open empty-icon"></i>
+        <p>{{ t('admin.noOrdersYet') }}</p>
       </div>
 
       <div v-else class="table-responsive">
         <table class="orders-table">
           <thead>
             <tr>
-              <th>رقم الطلب</th>
-              <th>التاريخ</th>
-              <th>اسم العميل</th>
-              <th>التليفون</th>
-              <th>العنوان</th>
-              <th>القطع</th>
-              <th>الإجمالي</th>
-              <th>الحالة</th>
-              <th>الإجراءات</th>
+              <th>{{ t('admin.orderId') }}</th>
+              <th>{{ t('admin.date') }}</th>
+              <th>{{ t('admin.customerName') }}</th>
+              <th>{{ t('admin.customerPhone') }}</th>
+              <th>{{ t('admin.address') }}</th>
+              <th>{{ t('admin.items') }}</th>
+              <th>{{ t('admin.total') }}</th>
+              <th>{{ t('admin.status') }}</th>
+              <th>{{ t('admin.actions') }}</th>
             </tr>
           </thead>
           <tbody>
             <tr v-for="order in list" :key="order.id">
               <td class="order-id">#{{ order.id.substring(0, 6).toUpperCase() }}</td>
               <td>{{ formatDate(order.createdAt) }}</td>
-              <td>{{ order.customer.name }}</td>
-              <td><a :href="`tel:${order.customer.phone}`">{{ order.customer.phone }}</a></td>
+              <td class="font-semibold">{{ order.customer?.name || '-' }}</td>
+              <td><a :href="`tel:${order.customer?.phone}`">{{ order.customer?.phone || '-' }}</a></td>
               <td>
-                <span class="address-tooltip" :title="order.customer.address + ' | ' + order.customer.notes">
-                  {{ order.customer.address.substring(0, 20) }}...
+                <span class="address-tooltip" :title="(order.customer?.address || '') + (order.customer?.notes ? ' | ' + order.customer.notes : '')">
+                  {{ (order.customer?.address || '').substring(0, 24) }}{{ (order.customer?.address || '').length > 24 ? '...' : '' }}
                 </span>
               </td>
-              <td>{{ order.totalItems }} قطع</td>
-              <td class="price">${{ order.totalPrice.toFixed(2) }}</td>
+              <td>{{ order.totalItems }} {{ t('admin.pieces') }}</td>
+              <td class="price">${{ order.totalPrice?.toFixed(2) }}</td>
               <td>
                 <span class="status-badge" :class="order.status">
-                  {{ order.status === 'pending' ? 'قيد الانتظار' : order.status === 'shipped' ? 'تم الشحن' : order.status === 'completed' ? 'مكتمل' : order.status === 'cancelled' ? 'ملغي' : order.status }}
+                  {{ order.status === 'pending' ? t('admin.statusPending') : order.status === 'shipped' ? t('admin.statusShipped') : order.status === 'completed' ? t('admin.statusCompleted') : order.status === 'cancelled' ? t('admin.statusCancelled') : order.status }}
                 </span>
               </td>
               <td>
                 <div class="action-buttons">
-                  <button class="details-btn" @click="openOrderDetails(order)">تفاصيل</button>
+                  <button class="details-btn" @click="openOrderDetails(order)" :title="t('common.details')">
+                    {{ t('common.details') }}
+                  </button>
                   <select 
                     class="status-select" 
                     :value="order.status" 
                     @change="updateStatus(order.id, $event.target.value)"
+                    :aria-label="t('admin.status')"
                   >
-                    <option value="pending">قيد الانتظار</option>
-                    <option value="shipped">تم الشحن</option>
-                    <option value="completed">مكتمل</option>
-                    <option value="cancelled">ملغي (استرجاع المخزون)</option>
+                    <option value="pending">{{ t('admin.statusPending') }}</option>
+                    <option value="shipped">{{ t('admin.statusShipped') }}</option>
+                    <option value="completed">{{ t('admin.statusCompleted') }}</option>
+                    <option value="cancelled">{{ t('admin.statusCancelledRestock') }}</option>
                   </select>
                 </div>
               </td>
@@ -299,19 +333,20 @@ const formatDate = (val) => {
         </table>
       </div>
 
-      <!-- أزرار التنقل بين الصفحات السيرفرية -->
+      <!-- Pagination Controls -->
       <div class="pagination-controls" v-if="totalPages > 1 || hasMore || currentPage > 1">
         <button 
           class="pagination-btn" 
           :disabled="currentPage === 1 || loading" 
           @click="prevPage"
         >
-          <i class="fa-solid fa-chevron-right"></i> السابق
+          <i :class="isRtl ? 'fa-solid fa-chevron-right' : 'fa-solid fa-chevron-left'"></i>
+          {{ t('pagination.prev') }}
         </button>
 
         <span class="pagination-info">
-          الصفحة {{ currentPage }} من {{ totalPages }}
-          <span class="total-orders-badge" v-if="totalOrdersCount">({{ totalOrdersCount }} طلب إجمالاً)</span>
+          {{ t('pagination.pageOf', { current: currentPage, total: totalPages }) }}
+          <span class="total-orders-badge" v-if="totalOrdersCount">({{ totalOrdersCount }} {{ t('admin.ordersCountSuffix') }})</span>
         </span>
 
         <button 
@@ -319,61 +354,98 @@ const formatDate = (val) => {
           :disabled="!hasMore || loading" 
           @click="nextPage"
         >
-          التالي <i class="fa-solid fa-chevron-left"></i>
+          {{ t('pagination.next') }}
+          <i :class="isRtl ? 'fa-solid fa-chevron-left' : 'fa-solid fa-chevron-right'"></i>
         </button>
       </div>
 
-      <!-- نافذة تفاصيل الطلب المنبثقة (Modal) -->
+      <!-- Order Details Modal -->
       <div v-if="isModalOpen" class="modal-overlay" @click.self="closeOrderDetails">
         <div class="modal-content">
           <div class="modal-header">
-            <h2>تفاصيل الطلب #{{ selectedOrder.id.substring(0, 6).toUpperCase() }}</h2>
-            <button class="close-btn" @click="closeOrderDetails">&times;</button>
+            <h2>{{ t('admin.orderDetailsTitle', { id: selectedOrder.id.substring(0, 6).toUpperCase() }) }}</h2>
+            <button class="close-btn" @click="closeOrderDetails" :aria-label="t('common.close')">&times;</button>
           </div>
           
           <div class="modal-body">
             <div class="customer-info-box">
               <div class="modal-status-row">
-                <h3>بيانات العميل والشحن</h3>
+                <h3>{{ t('admin.clientData') }}</h3>
                 <div class="modal-status-controls">
                   <span class="status-badge" :class="selectedOrder.status">
-                    {{ selectedOrder.status === 'pending' ? 'قيد الانتظار' : selectedOrder.status === 'shipped' ? 'تم الشحن' : selectedOrder.status === 'completed' ? 'مكتمل' : selectedOrder.status === 'cancelled' ? 'ملغي' : selectedOrder.status }}
+                    {{ selectedOrder.status === 'pending' ? t('admin.statusPending') : selectedOrder.status === 'shipped' ? t('admin.statusShipped') : selectedOrder.status === 'completed' ? t('admin.statusCompleted') : selectedOrder.status === 'cancelled' ? t('admin.statusCancelled') : selectedOrder.status }}
                   </span>
                   <select 
                     class="status-select" 
                     :value="selectedOrder.status" 
                     @change="updateStatus(selectedOrder.id, $event.target.value)"
+                    :aria-label="t('admin.status')"
                   >
-                    <option value="pending">قيد الانتظار</option>
-                    <option value="shipped">تم الشحن</option>
-                    <option value="completed">مكتمل</option>
-                    <option value="cancelled">ملغي (استرجاع المخزون)</option>
+                    <option value="pending">{{ t('admin.statusPending') }}</option>
+                    <option value="shipped">{{ t('admin.statusShipped') }}</option>
+                    <option value="completed">{{ t('admin.statusCompleted') }}</option>
+                    <option value="cancelled">{{ t('admin.statusCancelledRestock') }}</option>
                   </select>
                 </div>
               </div>
-              <p><strong>الاسم:</strong> {{ selectedOrder.customer.name }}</p>
-              <p><strong>الهاتف:</strong> {{ selectedOrder.customer.phone }}</p>
-              <p><strong>العنوان:</strong> {{ selectedOrder.customer.address }}</p>
-              <p v-if="selectedOrder.customer.notes"><strong>ملاحظات:</strong> {{ selectedOrder.customer.notes }}</p>
+              <p><strong>{{ t('admin.nameLabel') }}</strong> {{ selectedOrder.customer?.name }}</p>
+              <p><strong>{{ t('admin.phoneLabel') }}</strong> <a :href="`tel:${selectedOrder.customer?.phone}`">{{ selectedOrder.customer?.phone }}</a></p>
+              <p><strong>{{ t('admin.addressLabel') }}</strong> {{ selectedOrder.customer?.address }}</p>
+              <p v-if="selectedOrder.customer?.notes"><strong>{{ t('admin.customerNotes') }}</strong> {{ selectedOrder.customer?.notes }}</p>
+              
+              <!-- Payment & Promo Info -->
+              <p v-if="selectedOrder.paymentMethod">
+                <strong>{{ t('payment.methodTitle') }}:</strong>
+                <span class="admin-payment-pill" :class="selectedOrder.paymentMethod === 'card' ? 'paid-pill' : 'cod-pill'">
+                  <i :class="selectedOrder.paymentMethod === 'card' ? 'fa-solid fa-credit-card' : 'fa-solid fa-truck-ramp-box'"></i>
+                  {{ selectedOrder.paymentMethod === 'card' ? t('payment.paidBadge') : t('payment.codBadge') }}
+                </span>
+              </p>
+              <p v-if="selectedOrder.couponCode">
+                <strong>{{ t('promo.promoCodeLabel') }}</strong>
+                <span class="admin-coupon-pill">
+                  <i class="fa-solid fa-tag"></i> {{ selectedOrder.couponCode }} (-${{ Number(selectedOrder.discount || 0).toFixed(2) }})
+                </span>
+              </p>
             </div>
 
-            <h3>المنتجات المطلوبة</h3>
+            <h3 class="items-heading">{{ t('admin.productsOrdered') }}</h3>
             <div class="modal-items-list">
-              <div v-for="item in selectedOrder.items" :key="item.id" class="modal-item-row">
+              <div v-for="item in selectedOrder.items" :key="item.cartItemId || item.id" class="modal-item-row">
                 <img :src="item.image" :alt="item.title">
                 <div class="modal-item-info">
                   <h4>{{ item.title }}</h4>
-                  <p>الكمية: {{ item.quantity }} × ${{ item.price }}</p>
+
+                  <!-- Variant pills -->
+                  <div v-if="item.selectedSize || item.selectedColor || item.unitType === 'weight'" class="admin-variant-pills">
+                    <span v-if="item.unitType === 'weight'" class="admin-var-pill weight">
+                      <i class="fa-solid fa-weight-scale"></i> {{ item.quantity }} {{ t('variants.kg') }}
+                    </span>
+                    <span v-if="item.selectedSize" class="admin-var-pill">
+                      <i class="fa-solid fa-ruler-horizontal"></i> {{ item.selectedSize }}
+                    </span>
+                    <span v-if="item.selectedColor" class="admin-var-pill">
+                      <span class="color-dot-xs" :style="{ backgroundColor: item.selectedColor?.hex || item.selectedColor }"></span>
+                      {{ item.selectedColor?.name || item.selectedColor }}
+                    </span>
+                  </div>
+
+                  <p>
+                    {{ t('admin.quantityLabel') }} 
+                    {{ item.unitType === 'weight' ? `${item.quantity} ${t('variants.kg')}` : item.quantity }} 
+                    × ${{ Number(item.price).toFixed(2) }}
+                    <span v-if="item.unitType === 'weight'">/ {{ t('variants.kg') }}</span>
+                  </p>
                 </div>
                 <div class="modal-item-total">
-                  ${{ (item.price * item.quantity).toFixed(2) }}
+                  ${{ (item.subtotal ?? (item.price * item.quantity)).toFixed(2) }}
                 </div>
               </div>
             </div>
 
             <div class="modal-footer-total">
-              <span>الإجمالي الكلي:</span>
-              <span class="price-num">${{ selectedOrder.totalPrice.toFixed(2) }}</span>
+              <span>{{ t('admin.grandTotal') }}</span>
+              <span class="price-num">${{ Number(selectedOrder.totalPrice).toFixed(2) }}</span>
             </div>
           </div>
         </div>
@@ -387,36 +459,40 @@ const formatDate = (val) => {
 .admin-container {
   max-width: 1200px;
   margin: 0 auto;
-  padding: 40px 20px;
-  direction: rtl;
+  padding: 32px 20px;
 }
 
 .header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 30px;
+  margin-bottom: 28px;
+  flex-wrap: wrap;
+  gap: 16px;
 }
 
 .header h1 {
   color: #1e293b;
   margin: 0;
-  font-size: 1.8rem;
+  font-size: 1.75rem;
   font-weight: 800;
+  letter-spacing: -0.02em;
 }
 
 .stats {
-  background: #2563eb;
+  background: var(--primary-color, #2563eb);
   color: white;
-  padding: 8px 16px;
-  border-radius: 20px;
+  padding: 8px 18px;
+  border-radius: 9999px;
   font-weight: 700;
   font-size: 0.9rem;
+  display: inline-flex;
+  align-items: center;
 }
 
 .loading, .empty-state {
   text-align: center;
-  padding: 60px;
+  padding: 60px 20px;
   font-size: 1.1rem;
   color: #64748b;
   background: white;
@@ -424,23 +500,32 @@ const formatDate = (val) => {
   box-shadow: 0 4px 15px rgba(0,0,0,0.03);
 }
 
+.empty-icon {
+  font-size: 3rem;
+  color: #94a3b8;
+  margin-bottom: 12px;
+  display: block;
+}
+
 .table-responsive {
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
   background: white;
   border-radius: 16px;
   box-shadow: 0 10px 30px rgba(0,0,0,0.04);
-  border: 1px solid rgba(0,0,0,0.03);
+  border: 1px solid rgba(0,0,0,0.05);
 }
 
 .orders-table {
   width: 100%;
+  min-width: 800px;
   border-collapse: collapse;
   white-space: nowrap;
 }
 
 .orders-table th, .orders-table td {
   padding: 16px 20px;
-  text-align: right;
+  text-align: start;
   border-bottom: 1px solid #f1f5f9;
 }
 
@@ -448,7 +533,7 @@ const formatDate = (val) => {
   background-color: #f8fafc;
   color: #475569;
   font-weight: 700;
-  font-size: 0.9rem;
+  font-size: 0.875rem;
 }
 
 .orders-table tbody tr:hover {
@@ -459,6 +544,11 @@ const formatDate = (val) => {
   font-family: monospace;
   font-weight: bold;
   color: #64748b;
+}
+
+.font-semibold {
+  font-weight: 600;
+  color: #1e293b;
 }
 
 .price {
@@ -472,10 +562,11 @@ const formatDate = (val) => {
 }
 
 .status-badge {
-  padding: 6px 12px;
-  border-radius: 20px;
+  padding: 5px 12px;
+  border-radius: 9999px;
   font-size: 0.8rem;
   font-weight: 700;
+  display: inline-block;
 }
 
 .status-badge.pending {
@@ -505,7 +596,7 @@ const formatDate = (val) => {
 }
 
 .details-btn {
-  padding: 6px 12px;
+  padding: 8px 14px;
   background-color: #f1f5f9;
   border: 1px solid #cbd5e1;
   border-radius: 8px;
@@ -514,21 +605,30 @@ const formatDate = (val) => {
   font-weight: 600;
   color: #475569;
   cursor: pointer;
-  transition: background 0.2s;
+  min-height: 44px;
+  min-width: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
 }
 
 .details-btn:hover {
   background-color: #e2e8f0;
+  color: #1e293b;
 }
 
 .status-select {
-  padding: 6px 10px;
+  padding: 8px 12px;
   border-radius: 8px;
   border: 1px solid #cbd5e1;
   background-color: #f8fafc;
   font-family: inherit;
   font-size: 0.85rem;
   cursor: pointer;
+  min-height: 44px;
+  color: #334155;
+  font-weight: 600;
 }
 
 /* Modal Styling */
@@ -536,24 +636,28 @@ const formatDate = (val) => {
   position: fixed;
   top: 0;
   left: 0;
-  width: 100%;
-  height: 100%;
-  background: rgba(0, 0, 0, 0.5);
+  right: 0;
+  bottom: 0;
+  width: 100vw;
+  height: 100dvh;
+  background: rgba(15, 23, 42, 0.6);
+  backdrop-filter: blur(4px);
   display: flex;
   justify-content: center;
   align-items: center;
   z-index: 1000;
+  padding: 16px;
 }
 
 .modal-content {
   background: white;
   width: 100%;
-  max-width: 600px;
-  border-radius: 16px;
-  padding: 30px;
-  max-height: 90vh;
+  max-width: 620px;
+  max-height: 90dvh;
+  border-radius: 20px;
+  padding: 28px;
   overflow-y: auto;
-  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
 }
 
 .modal-header {
@@ -561,13 +665,14 @@ const formatDate = (val) => {
   justify-content: space-between;
   align-items: center;
   border-bottom: 1px solid #f1f5f9;
-  padding-bottom: 15px;
+  padding-bottom: 16px;
   margin-bottom: 20px;
 }
 
 .modal-header h2 {
   margin: 0;
-  font-size: 1.3rem;
+  font-size: 1.25rem;
+  font-weight: 800;
   color: #1e293b;
 }
 
@@ -577,24 +682,37 @@ const formatDate = (val) => {
   font-size: 1.8rem;
   cursor: pointer;
   color: #64748b;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  transition: all 0.2s;
+}
+
+.close-btn:hover {
+  background-color: #f1f5f9;
+  color: #0f172a;
 }
 
 .customer-info-box {
   background: #f8fafc;
-  padding: 15px;
-  border-radius: 12px;
+  padding: 18px;
+  border-radius: 14px;
   margin-bottom: 20px;
   font-size: 0.95rem;
   color: #334155;
+  border: 1px solid #e2e8f0;
 }
 
 .modal-status-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 12px;
+  margin-bottom: 14px;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 12px;
 }
 
 .modal-status-controls {
@@ -606,11 +724,20 @@ const formatDate = (val) => {
 .customer-info-box h3 {
   margin: 0;
   font-size: 1rem;
+  font-weight: 700;
   color: #1e293b;
 }
 
 .customer-info-box p {
-  margin: 6px 0;
+  margin: 8px 0;
+  line-height: 1.5;
+}
+
+.items-heading {
+  margin: 20px 0 12px 0;
+  font-size: 1rem;
+  font-weight: 700;
+  color: #1e293b;
 }
 
 .modal-items-list {
@@ -618,36 +745,43 @@ const formatDate = (val) => {
   flex-direction: column;
   gap: 12px;
   margin-top: 10px;
-  max-height: 250px;
+  max-height: 240px;
   overflow-y: auto;
+  padding-inline-end: 4px;
 }
 
 .modal-item-row {
   display: flex;
   align-items: center;
-  gap: 15px;
+  gap: 14px;
   padding-bottom: 12px;
   border-bottom: 1px solid #f1f5f9;
 }
 
 .modal-item-row img {
-  width: 50px;
-  height: 50px;
+  width: 52px;
+  height: 52px;
   object-fit: contain;
   background: #f8fafc;
   border: 1px solid #e2e8f0;
-  border-radius: 8px;
+  border-radius: 10px;
   padding: 4px;
+  flex-shrink: 0;
 }
 
 .modal-item-info {
   flex: 1;
+  min-width: 0;
 }
 
 .modal-item-info h4 {
   margin: 0 0 4px 0;
   font-size: 0.9rem;
+  font-weight: 600;
   color: #1e293b;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .modal-item-info p {
@@ -662,12 +796,81 @@ const formatDate = (val) => {
   font-size: 0.95rem;
 }
 
+.admin-payment-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 999px;
+  margin-inline-start: 6px;
+}
+
+.admin-payment-pill.paid-pill {
+  background: #ecfdf5;
+  color: #059669;
+  border: 1px solid #a7f3d0;
+}
+
+.admin-payment-pill.cod-pill {
+  background: #eff6ff;
+  color: #2563eb;
+  border: 1px solid #bfdbfe;
+}
+
+.admin-coupon-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #059669;
+  background: #f0fdf4;
+  padding: 3px 8px;
+  border-radius: 6px;
+  border: 1px dashed #86efac;
+  margin-inline-start: 6px;
+}
+
+.admin-variant-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 4px 0 2px;
+}
+
+.admin-var-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  background: #f1f5f9;
+  color: #334155;
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+.admin-var-pill.weight {
+  background: #ecfdf5;
+  color: #059669;
+}
+
+.color-dot-xs {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  border: 1px solid rgba(0, 0, 0, 0.2);
+}
+
 .modal-footer-total {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-top: 20px;
-  padding-top: 15px;
+  margin-top: 24px;
+  padding-top: 16px;
   border-top: 2px dashed #e2e8f0;
   font-size: 1.1rem;
   font-weight: 800;
@@ -676,7 +879,7 @@ const formatDate = (val) => {
 
 .price-num {
   color: #10b981;
-  font-size: 1.3rem;
+  font-size: 1.35rem;
 }
 
 a {
@@ -692,16 +895,17 @@ a:hover {
   display: flex;
   justify-content: center;
   align-items: center;
-  gap: 15px;
-  margin-top: 25px;
+  gap: 16px;
+  margin-top: 28px;
   padding: 10px 0;
+  flex-wrap: wrap;
 }
 
 .pagination-btn {
-  padding: 8px 18px;
+  padding: 8px 20px;
   background-color: white;
   border: 1px solid #cbd5e1;
-  border-radius: 8px;
+  border-radius: 10px;
   font-family: inherit;
   font-size: 0.9rem;
   font-weight: 700;
@@ -710,6 +914,7 @@ a:hover {
   display: flex;
   align-items: center;
   gap: 8px;
+  min-height: 44px;
   transition: all 0.2s;
 }
 

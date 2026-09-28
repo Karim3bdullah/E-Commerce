@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { db, auth } from '../firebase/config'
 import { doc, collection, runTransaction, serverTimestamp } from 'firebase/firestore'
+import { useI18n } from 'vue-i18n'
 import Swal from 'sweetalert2'
 
 const props = defineProps({
@@ -12,6 +13,7 @@ const props = defineProps({
   }
 })
 
+const { t, locale } = useI18n()
 const route = useRoute()
 const router = useRouter()
 const emit = defineEmits(['reviewAdded'])
@@ -27,13 +29,21 @@ const sendReview = async () => {
   }
 
   if (!comment.value.trim()) {
-    Swal.fire({ icon: 'warning', title: 'اكتب تعليق الأول' })
+    Swal.fire({ 
+      icon: 'warning', 
+      title: t('product.commentRequired'),
+      confirmButtonColor: '#059669'
+    })
     return
   }
 
   const prodId = props.productId || route.params.id
   if (!prodId) {
-    Swal.fire({ icon: 'error', title: 'خطأ', text: 'معرف المنتج غير محدد' })
+    Swal.fire({ 
+      icon: 'error', 
+      title: t('common.error'), 
+      confirmButtonColor: '#ef4444'
+    })
     return
   }
 
@@ -44,11 +54,21 @@ const sendReview = async () => {
     const reviewsColRef = collection(db, 'products', prodId, 'reviews')
     const newReviewRef = doc(reviewsColRef)
 
-    const currentDateStr = new Date().toLocaleDateString('ar-EG')
+    const currentDateStr = new Date().toLocaleDateString(locale.value === 'ar' ? 'ar-EG' : 'en-US')
+    let userPhoto = auth.currentUser.photoURL || null
+    if (!userPhoto) {
+      try {
+        const uSnap = await getDoc(doc(db, 'users', auth.currentUser.uid))
+        if (uSnap.exists() && uSnap.data().photoURL) {
+          userPhoto = uSnap.data().photoURL
+        }
+      } catch (_) {}
+    }
+
     const reviewData = {
       userId: auth.currentUser.uid,
-      userName: auth.currentUser.displayName || 'مستخدم',
-      userPhoto: auth.currentUser.photoURL || null,
+      userName: auth.currentUser.displayName || (locale.value === 'ar' ? 'مستخدم' : 'Customer'),
+      userPhoto: userPhoto,
       rating: Number(rating.value),
       comment: comment.value.trim(),
       date: currentDateStr,
@@ -61,7 +81,7 @@ const sendReview = async () => {
     await runTransaction(db, async (transaction) => {
       const docSnap = await transaction.get(itemRef)
       if (!docSnap.exists()) {
-        throw new Error("المنتج غير موجود")
+        throw new Error(t('product.notFound'))
       }
       
       const prodData = docSnap.data()
@@ -97,13 +117,18 @@ const sendReview = async () => {
 
     Swal.fire({ 
       icon: 'success', 
-      title: 'تم إرسال تقييمك بنجاح', 
-      timer: 1500, 
+      title: t('product.reviewSuccess'), 
+      timer: 1800, 
       showConfirmButton: false 
     })
   } catch (err) {
-    console.error("مشكلة في حفظ التقييم:", err)
-    Swal.fire({ icon: 'error', title: 'حدث خطأ أثناء الإرسال', text: err.message || 'حاول مجدداً لاحقاً.' })
+    console.error("Error saving review:", err)
+    Swal.fire({ 
+      icon: 'error', 
+      title: t('product.reviewError'), 
+      text: err.message || '',
+      confirmButtonColor: '#ef4444'
+    })
   } finally {
     loading.value = false
   }
@@ -112,26 +137,32 @@ const sendReview = async () => {
 
 <template>
   <div class="review-form-card">
-    <h3>أضف تقييمك للمنتج</h3>
+    <h3>{{ t('product.addReview') }}</h3>
     <form @submit.prevent="sendReview">
       <div class="input-group">
-        <label>التقييم:</label>
+        <label>{{ t('product.rate') }}</label>
         <select v-model.number="rating" class="select-rate">
-          <option value="5">⭐⭐⭐⭐⭐ (ممتاز)</option>
-          <option value="4">⭐⭐⭐⭐ (جيد جداً)</option>
-          <option value="3">⭐⭐⭐ (متوسط)</option>
-          <option value="2">⭐⭐ (ضعيف)</option>
-          <option value="1">⭐ (سيء)</option>
+          <option value="5">{{ t('product.rate5') }}</option>
+          <option value="4">{{ t('product.rate4') }}</option>
+          <option value="3">{{ t('product.rate3') }}</option>
+          <option value="2">{{ t('product.rate2') }}</option>
+          <option value="1">{{ t('product.rate1') }}</option>
         </select>
       </div>
 
       <div class="input-group">
-        <label>التعليق:</label>
-        <textarea v-model="comment" rows="3" placeholder="شاركنا رأيك بصراحة..."></textarea>
+        <label>{{ t('product.comment') }}</label>
+        <textarea 
+          v-model="comment" 
+          rows="3" 
+          :placeholder="t('product.reviewPlaceholder')"
+          class="review-textarea"
+        ></textarea>
       </div>
 
       <button type="submit" class="send-btn" :disabled="loading">
-        {{ loading ? 'جاري الإرسال...' : 'إرسال التقييم' }}
+        <i v-if="loading" class="fa-solid fa-spinner fa-spin"></i>
+        <span>{{ loading ? t('product.sendingReview') : t('product.sendReview') }}</span>
       </button>
     </form>
   </div>
@@ -140,63 +171,103 @@ const sendReview = async () => {
 <style scoped>
 .review-form-card {
   background: #f8fafc;
-  padding: 25px;
-  border-radius: 16px;
-  border: 1px solid #e2e8f0;
-  margin-top: 30px;
+  padding: 28px;
+  border-radius: 18px;
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  margin-top: 32px;
 }
 
 .review-form-card h3 {
-  margin-top: 0;
-  margin-bottom: 20px;
-  color: #1e293b;
-  font-size: 1.2rem;
+  margin: 0 0 20px 0;
+  color: #0f172a;
+  font-size: 1.15rem;
+  font-weight: 800;
 }
 
 .input-group {
-  margin-bottom: 15px;
+  margin-bottom: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
-.input-group label {
-  display: block;
-  margin-bottom: 6px;
-  font-weight: 600;
-  color: #475569;
+label {
   font-size: 0.9rem;
+  font-weight: 700;
+  color: #334155;
 }
 
-.select-rate, textarea {
-  width: 100%;
-  padding: 12px;
-  border: 1px solid #cbd5e1;
+.select-rate {
+  padding: 10px 14px;
+  min-height: 44px;
   border-radius: 10px;
+  border: 1px solid #cbd5e1;
+  background-color: white;
   font-family: inherit;
   font-size: 0.95rem;
-  background: #fff;
+  cursor: pointer;
   outline: none;
+  transition: border-color 0.2s ease;
 }
 
-.select-rate:focus, textarea:focus {
-  border-color: #2563eb;
+.select-rate:focus {
+  border-color: #059669;
+  box-shadow: 0 0 0 3px rgba(5, 150, 105, 0.12);
+}
+
+.review-textarea {
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid #cbd5e1;
+  font-family: inherit;
+  font-size: 0.95rem;
+  resize: vertical;
+  outline: none;
+  transition: border-color 0.2s ease;
+}
+
+.review-textarea:focus {
+  border-color: #059669;
+  box-shadow: 0 0 0 3px rgba(5, 150, 105, 0.12);
 }
 
 .send-btn {
-  background: #2563eb;
+  background: #059669;
   color: white;
   border: none;
-  padding: 12px 25px;
+  padding: 12px 28px;
+  min-height: 44px;
   border-radius: 10px;
+  font-size: 0.95rem;
   font-weight: 700;
   cursor: pointer;
-  transition: background 0.2s;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.2s ease;
+  font-family: inherit;
+  box-shadow: 0 4px 12px rgba(5, 150, 105, 0.25);
 }
 
-.send-btn:hover {
-  background: #1d4ed8;
+.send-btn:hover:not(:disabled) {
+  background: #047857;
+  transform: translateY(-2px);
 }
 
 .send-btn:disabled {
   background: #cbd5e1;
   cursor: not-allowed;
+  box-shadow: none;
+}
+
+@media (max-width: 480px) {
+  .review-form-card {
+    padding: 20px 16px;
+  }
+  
+  .send-btn {
+    width: 100%;
+    justify-content: center;
+  }
 }
 </style>

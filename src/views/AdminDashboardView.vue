@@ -3,21 +3,22 @@
     <div class="dashboard-container">
       
       <div class="dashboard-header">
-        <h1>لوحة الإحصائيات والتقارير</h1>
-        <p>نظرة عامة على أداء المتجر والمبيعات</p>
+        <h1>{{ t('admin.dashboard') }}</h1>
+        <p>{{ t('admin.dashboardSub') }}</p>
       </div>
 
       <div v-if="loading" class="loading-state">
-        <i class="fa-solid fa-spinner fa-spin"></i> جاري حرق الأرقام وحساب الإحصائيات...
+        <i class="fa-solid fa-spinner fa-spin"></i> {{ t('admin.calculatingStats') }}
       </div>
 
       <template v-else>
+        <!-- Top Stats Cards Grid -->
         <div class="stats-grid">
           
           <div class="stat-card green">
             <div class="stat-icon"><i class="fa-solid fa-dollar-sign"></i></div>
             <div class="stat-info">
-              <span>إجمالي المبيعات</span>
+              <span>{{ t('admin.totalRevenue') }}</span>
               <h3>${{ stats.totalRevenue.toFixed(2) }}</h3>
             </div>
           </div>
@@ -25,7 +26,7 @@
           <div class="stat-card blue">
             <div class="stat-icon"><i class="fa-solid fa-cart-flatbed"></i></div>
             <div class="stat-info">
-              <span>إجمالي الطلبات</span>
+              <span>{{ t('admin.totalOrders') }}</span>
               <h3>{{ stats.totalOrders }}</h3>
             </div>
           </div>
@@ -33,7 +34,7 @@
           <div class="stat-card purple">
             <div class="stat-icon"><i class="fa-solid fa-boxes-stacked"></i></div>
             <div class="stat-info">
-              <span>عدد المنتجات</span>
+              <span>{{ t('admin.totalProducts') }}</span>
               <h3>{{ stats.totalProducts }}</h3>
             </div>
           </div>
@@ -41,47 +42,50 @@
           <div class="stat-card orange">
             <div class="stat-icon"><i class="fa-solid fa-users"></i></div>
             <div class="stat-info">
-              <span>العملاء المسجلون</span>
+              <span>{{ t('admin.totalUsers') }}</span>
               <h3>{{ stats.totalUsers }}</h3>
             </div>
           </div>
 
         </div>
 
+        <!-- Details Grid: Recent Orders & Stock Alerts -->
         <div class="dashboard-details-grid">
           
+          <!-- Recent Orders Card -->
           <div class="details-card">
             <div class="card-title">
-              <h3><i class="fa-solid fa-clock-rotate-left"></i> أحدث الطلبات</h3>
-              <RouterLink to="/admin/orders" class="view-all">عرض الكل</RouterLink>
+              <h3><i class="fa-solid fa-clock-rotate-left"></i> {{ t('admin.recentOrders') }}</h3>
+              <RouterLink to="/admin/orders" class="view-all">{{ t('admin.viewAll') }}</RouterLink>
             </div>
 
-            <div v-if="recentOrders.length === 0" class="empty-text">لا توجد طلبات حتى الآن.</div>
+            <div v-if="recentOrders.length === 0" class="empty-text">{{ t('admin.noOrdersYet') }}</div>
 
             <ul v-else class="recent-orders-list">
               <li v-for="order in recentOrders" :key="order.id">
                 <div class="order-main-info">
                   <strong>#{{ order.id.substring(0, 6).toUpperCase() }}</strong>
-                  <span>{{ order.customer?.name || 'عميل' }}</span>
+                  <span>{{ order.customer?.name || t('admin.userRole') }}</span>
                 </div>
                 <div class="order-price-status">
-                  <span class="price">${{ order.totalPrice?.toFixed(2) }}</span>
+                  <span class="price">${{ Number(order.totalPrice || 0).toFixed(2) }}</span>
                   <span :class="['status-pill', order.status]">
-                    {{ order.status === 'pending' ? 'انتظار' : order.status === 'shipped' ? 'مشحون' : order.status === 'cancelled' ? 'ملغي' : 'مكتمل' }}
+                    {{ getStatusText(order.status) }}
                   </span>
                 </div>
               </li>
             </ul>
           </div>
 
+          <!-- Stock Alerts Card -->
           <div class="details-card">
             <div class="card-title">
-              <h3><i class="fa-solid fa-triangle-exclamation"></i> تنبيهات المخزون</h3>
-              <RouterLink to="/admin/products" class="view-all">إدارة المنتجات</RouterLink>
+              <h3><i class="fa-solid fa-triangle-exclamation"></i> {{ t('admin.stockAlerts') }}</h3>
+              <RouterLink to="/admin/products" class="view-all">{{ t('admin.productsManage') }}</RouterLink>
             </div>
 
             <div v-if="lowStockProducts.length === 0" class="empty-text green-text">
-              <i class="fa-solid fa-circle-check"></i> جميع المنتجات بمخزون آمن!
+              <i class="fa-solid fa-circle-check"></i> {{ t('admin.safeStock') }}
             </div>
 
             <ul v-else class="low-stock-list">
@@ -90,7 +94,7 @@
                   <img :src="product.image" :alt="product.title">
                   <span>{{ product.title }}</span>
                 </div>
-                <span class="stock-badge">متبقي {{ product.stock }} قطع</span>
+                <span class="stock-badge">{{ t('admin.stockWarning', { count: product.stock }) }}</span>
               </li>
             </ul>
           </div>
@@ -106,8 +110,10 @@
 import { ref, onMounted } from 'vue'
 import { db } from '../firebase/config'
 import { collection, getDocs, query, orderBy, limit, getCountFromServer, getAggregateFromServer, sum, where } from 'firebase/firestore'
+import { useI18n } from 'vue-i18n'
 import AdminLayout from '../components/AdminLayout.vue'
 
+const { t } = useI18n()
 const loading = ref(true)
 
 const stats = ref({
@@ -119,6 +125,18 @@ const stats = ref({
 
 const recentOrders = ref([])
 const lowStockProducts = ref([])
+
+const getStatusText = (status) => {
+  switch (status) {
+    case 'pending': return t('orders.statusPending')
+    case 'processing': return t('orders.statusProcessing')
+    case 'shipped': return t('orders.statusShipped')
+    case 'delivered': return t('orders.statusDelivered')
+    case 'completed': return t('orders.statusCompleted')
+    case 'cancelled': return t('orders.statusCancelled')
+    default: return status
+  }
+}
 
 onMounted(async () => {
   try {
@@ -148,7 +166,7 @@ onMounted(async () => {
     stats.value.totalUsers = usersCountSnap.data().count
 
   } catch (error) {
-    console.error("خطأ في جلب الإحصائيات:", error)
+    console.error("Dashboard metrics loading error:", error)
   } finally {
     loading.value = false
   }
@@ -157,76 +175,82 @@ onMounted(async () => {
 
 <style scoped>
 .dashboard-container {
-  max-width: 1200px;
+  max-width: 1300px;
   margin: 0 auto;
-  padding: 30px 20px;
-  direction: rtl;
+  width: 100%;
 }
 
 .dashboard-header {
-  margin-bottom: 30px;
+  margin-bottom: 28px;
 }
 
 .dashboard-header h1 {
-  margin: 0 0 8px 0;
-  color: #1e293b;
   font-size: 1.8rem;
+  color: #0f172a;
+  margin: 0 0 6px 0;
   font-weight: 800;
 }
 
 .dashboard-header p {
-  margin: 0;
   color: #64748b;
+  margin: 0;
   font-size: 0.95rem;
 }
 
 .loading-state {
   text-align: center;
-  padding: 80px 0;
+  padding: 60px 20px;
   color: #64748b;
-  font-size: 1.2rem;
+  font-size: 1.1rem;
 }
 
+/* Stats Cards Grid */
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: 20px;
-  margin-bottom: 35px;
+  margin-bottom: 32px;
 }
 
 .stat-card {
   background: white;
-  padding: 22px;
-  border-radius: 16px;
+  padding: 24px;
+  border-radius: 18px;
   box-shadow: 0 4px 15px rgba(0, 0, 0, 0.03);
-  border: 1px solid #f1f5f9;
+  border: 1px solid rgba(226, 232, 240, 0.9);
   display: flex;
   align-items: center;
-  gap: 20px;
+  gap: 18px;
+  transition: transform 0.2s ease;
+}
+
+.stat-card:hover {
+  transform: translateY(-2px);
 }
 
 .stat-icon {
-  width: 55px;
-  height: 55px;
+  width: 56px;
+  height: 56px;
   border-radius: 14px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.5rem;
+  font-size: 1.4rem;
+  flex-shrink: 0;
 }
 
 .stat-info span {
   display: block;
   font-size: 0.85rem;
   color: #64748b;
-  margin-bottom: 5px;
+  margin-bottom: 4px;
   font-weight: 600;
 }
 
 .stat-info h3 {
   margin: 0;
-  font-size: 1.6rem;
-  color: #1e293b;
+  font-size: 1.55rem;
+  color: #0f172a;
   font-weight: 800;
 }
 
@@ -235,36 +259,38 @@ onMounted(async () => {
 .stat-card.purple .stat-icon { background: #f3e8ff; color: #9333ea; }
 .stat-card.orange .stat-icon { background: #ffedd5; color: #ea580c; }
 
+/* Details Grid: Recent Orders & Alerts */
 .dashboard-details-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
-  gap: 25px;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 24px;
 }
 
 .details-card {
   background: white;
-  padding: 25px;
-  border-radius: 16px;
+  padding: 24px;
+  border-radius: 18px;
   box-shadow: 0 4px 15px rgba(0, 0, 0, 0.03);
-  border: 1px solid #f1f5f9;
+  border: 1px solid rgba(226, 232, 240, 0.9);
 }
 
 .card-title {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 20px;
+  margin-bottom: 18px;
   padding-bottom: 12px;
   border-bottom: 1px solid #f1f5f9;
 }
 
 .card-title h3 {
   margin: 0;
-  font-size: 1.1rem;
-  color: #1e293b;
+  font-size: 1.05rem;
+  color: #0f172a;
   display: flex;
   align-items: center;
   gap: 10px;
+  font-weight: 800;
 }
 
 .view-all {
@@ -272,12 +298,18 @@ onMounted(async () => {
   font-size: 0.85rem;
   font-weight: 700;
   text-decoration: none;
+  padding: 4px 8px;
+}
+
+.view-all:hover {
+  text-decoration: underline;
 }
 
 .empty-text {
   text-align: center;
-  padding: 30px 0;
+  padding: 36px 0;
   color: #94a3b8;
+  font-size: 0.9rem;
 }
 
 .green-text {
@@ -298,9 +330,9 @@ onMounted(async () => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 12px 15px;
+  padding: 12px 14px;
   background: #f8fafc;
-  border-radius: 10px;
+  border-radius: 12px;
   border: 1px solid #f1f5f9;
 }
 
@@ -311,7 +343,7 @@ onMounted(async () => {
 }
 
 .order-main-info strong {
-  color: #1e293b;
+  color: #0f172a;
   font-size: 0.9rem;
 }
 
@@ -328,42 +360,45 @@ onMounted(async () => {
 
 .price {
   font-weight: 800;
-  color: #10b981;
+  color: #059669;
+  font-size: 0.95rem;
 }
 
 .status-pill {
-  padding: 4px 10px;
-  border-radius: 20px;
+  padding: 3px 10px;
+  border-radius: 999px;
   font-size: 0.75rem;
   font-weight: 700;
 }
 
 .status-pill.pending { background: #fef3c7; color: #d97706; }
 .status-pill.shipped { background: #e0f2fe; color: #0284c7; }
-.status-pill.completed { background: #dcfce7; color: #16a34a; }
+.status-pill.completed, .status-pill.delivered { background: #dcfce7; color: #16a34a; }
 .status-pill.cancelled { background: #fee2e2; color: #dc2626; }
 
 .prod-info {
   display: flex;
   align-items: center;
   gap: 12px;
+  min-width: 0;
 }
 
 .prod-info img {
-  width: 35px;
-  height: 35px;
+  width: 38px;
+  height: 38px;
   object-fit: contain;
   background: white;
-  border-radius: 6px;
+  border-radius: 8px;
   padding: 2px;
   border: 1px solid #e2e8f0;
+  flex-shrink: 0;
 }
 
 .prod-info span {
-  font-size: 0.9rem;
+  font-size: 0.88rem;
   font-weight: 600;
-  color: #1e293b;
-  max-width: 180px;
+  color: #0f172a;
+  max-width: 160px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -374,7 +409,24 @@ onMounted(async () => {
   color: #dc2626;
   padding: 4px 10px;
   border-radius: 8px;
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   font-weight: 700;
+  flex-shrink: 0;
+}
+
+@media (max-width: 768px) {
+  .dashboard-header h1 {
+    font-size: 1.5rem;
+  }
+
+  .stats-grid {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+
+  .dashboard-details-grid {
+    grid-template-columns: 1fr;
+    gap: 18px;
+  }
 }
 </style>

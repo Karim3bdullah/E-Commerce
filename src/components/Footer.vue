@@ -2,7 +2,7 @@
   <footer class="footer">
     <div class="footer-container">
       
-      <!-- العمود الأول: نبذة عن المتجر -->
+      <!-- Column 1: Store Brand & Socials -->
       <div class="footer-col">
         <div class="footer-brand">
           <template v-if="settingsStore.logoType === 'image' && settingsStore.logoUrl">
@@ -24,7 +24,7 @@
         </div>
       </div>
 
-      <!-- العمود الثاني: روابط سريعة -->
+      <!-- Column 2: Quick Links -->
       <div class="footer-col">
         <h3>{{ t('footer.quickLinks') }}</h3>
         <ul class="footer-links">
@@ -35,7 +35,7 @@
         </ul>
       </div>
 
-      <!-- العمود الثالث: خدمة العملاء -->
+      <!-- Column 3: Customer Service -->
       <div class="footer-col">
         <h3>{{ t('footer.customerService') }}</h3>
         <ul class="footer-links">
@@ -46,7 +46,7 @@
         </ul>
       </div>
 
-      <!-- العمود الرابع: وسائل الدفع -->
+      <!-- Column 4: Payment Methods -->
       <div class="footer-col">
         <h3>{{ t('footer.securePayment') }}</h3>
         <p class="payment-desc">{{ t('footer.paymentDesc') }}</p>
@@ -60,23 +60,25 @@
 
     </div>
 
-    <!-- أسفل الفوتر -->
+    <!-- Footer Bottom -->
     <div class="footer-bottom">
       <p>{{ t('footer.rights') }}</p>
     </div>
 
-    <!-- نافذة منبثقة للمعلومات والسياسات (Disclosures Modal) -->
+    <!-- Disclosure Modals with Viewport Boundary & Direction Safety -->
     <div v-if="activeModal" class="modal-overlay" @click.self="closeModal">
-      <div class="modal-content">
+      <div class="modal-content" :class="isRtl ? 'rtl-modal' : 'ltr-modal'">
         <div class="modal-header">
           <h3>{{ modalTitle }}</h3>
-          <button class="close-btn" @click="closeModal">&times;</button>
+          <button type="button" class="close-btn" @click="closeModal" :aria-label="t('common.close')">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
         </div>
         <div class="modal-body">
           <p v-html="modalContent" class="disclosure-text"></p>
         </div>
         <div class="modal-footer">
-          <button class="close-action-btn" @click="closeModal">{{ t('common.cancel') }}</button>
+          <button type="button" class="close-action-btn" @click="closeModal">{{ t('common.close') }}</button>
         </div>
       </div>
     </div>
@@ -91,6 +93,7 @@ import { useSettingsStore } from '../stores/settingsStore'
 const { t, locale } = useI18n()
 const settingsStore = useSettingsStore()
 
+const isRtl = computed(() => locale.value === 'ar')
 const currentBrandName = computed(() => settingsStore.getStoreName(locale.value))
 
 const activeModal = ref(null)
@@ -115,73 +118,60 @@ const closeModal = () => {
 </script>
 
 <style scoped>
-.footer-logo-img {
-  max-height: 44px;
-  max-width: 180px;
-  object-fit: contain;
-}
-
 .footer {
   background-color: #0f172a;
-  color: #94a3b8;
-  padding-top: 60px;
-  margin-top: 80px;
+  color: #f8fafc;
+  padding-top: 50px;
+  margin-top: 60px;
   border-top: 1px solid #1e293b;
+  position: relative;
+  width: 100%;
 }
 
 .footer-container {
   max-width: 1300px;
   margin: 0 auto;
-  padding: 0 20px 40px;
+  padding: 0 24px 50px;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  grid-template-columns: 2fr 1fr 1.2fr 1.2fr;
   gap: 40px;
 }
 
-.footer-col h3 {
-  color: #ffffff;
-  font-size: 1.1rem;
-  margin-bottom: 20px;
-  font-weight: 700;
-  position: relative;
-  padding-bottom: 8px;
-}
-
-.footer-col h3::after {
-  content: '';
-  position: absolute;
-  bottom: 0;
-  right: 0;
-  width: 35px;
-  height: 3px;
-  background-color: #2563eb;
-  border-radius: 2px;
+.footer-col {
+  display: flex;
+  flex-direction: column;
 }
 
 .footer-brand {
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-bottom: 15px;
+  gap: 12px;
+  margin-bottom: 16px;
 }
 
 .brand-icon {
   font-size: 1.8rem;
-  color: #2563eb;
+  color: #10b981;
 }
 
 .footer-brand h2 {
-  color: #ffffff;
   font-size: 1.5rem;
   font-weight: 800;
   margin: 0;
+  color: white;
+}
+
+.footer-logo-img {
+  max-height: 48px;
+  max-width: 180px;
+  object-fit: contain;
 }
 
 .brand-desc {
-  font-size: 0.9rem;
-  line-height: 1.7;
-  margin-bottom: 20px;
   color: #94a3b8;
+  font-size: 0.92rem;
+  line-height: 1.7;
+  margin-bottom: 24px;
 }
 
 .social-icons {
@@ -190,21 +180,45 @@ const closeModal = () => {
 }
 
 .social-icon {
-  width: 38px;
-  height: 38px;
-  background: #1e293b;
-  color: #ffffff;
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  min-height: 44px;
+  background-color: #1e293b;
+  color: #cbd5e1;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   text-decoration: none;
-  transition: all 0.3s ease;
+  font-size: 1.1rem;
+  transition: all 0.3s;
 }
 
 .social-icon:hover {
-  background: #2563eb;
+  background-color: #10b981;
+  color: white;
   transform: translateY(-3px);
+}
+
+.footer-col h3 {
+  color: white;
+  font-size: 1.15rem;
+  margin-bottom: 20px;
+  font-weight: 700;
+  position: relative;
+  padding-bottom: 10px;
+}
+
+.footer-col h3::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  inset-inline-start: 0;
+  width: 35px;
+  height: 2px;
+  background-color: #10b981;
+  border-radius: 2px;
 }
 
 .footer-links {
@@ -216,37 +230,39 @@ const closeModal = () => {
   gap: 12px;
 }
 
-.footer-links li a {
+.footer-links a {
   color: #94a3b8;
   text-decoration: none;
-  font-size: 0.95rem;
-  transition: color 0.2s ease, padding 0.2s ease;
-  cursor: pointer;
+  font-size: 0.92rem;
+  transition: all 0.2s;
+  display: inline-block;
 }
 
-.footer-links li a:hover {
-  color: #ffffff;
-  padding-right: 5px;
+.footer-links a:hover {
+  color: #10b981;
+  transform: translateX(4px);
 }
 
 .payment-desc {
+  color: #94a3b8;
   font-size: 0.9rem;
-  margin-bottom: 15px;
+  line-height: 1.6;
+  margin-bottom: 16px;
 }
 
 .payment-methods {
   display: flex;
   gap: 15px;
-  font-size: 2rem;
+  font-size: 2.2rem;
   color: #cbd5e1;
 }
 
 .pay-icon {
-  transition: color 0.3s;
+  transition: color 0.2s;
 }
 
 .pay-icon:hover {
-  color: #2563eb;
+  color: #10b981;
 }
 
 .footer-bottom {
@@ -261,10 +277,10 @@ const closeModal = () => {
 /* Modal Disclosures Styling */
 .modal-overlay {
   position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
   background: rgba(15, 23, 42, 0.7);
   backdrop-filter: blur(4px);
   display: flex;
@@ -277,14 +293,25 @@ const closeModal = () => {
 .modal-content {
   background: #ffffff;
   color: #1e293b;
-  border-radius: 16px;
+  border-radius: 18px;
   max-width: 550px;
   width: 100%;
+  max-height: 85dvh;
+  overflow-y: auto;
   padding: 28px;
   box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
-  direction: rtl;
   position: relative;
   animation: modalFadeIn 0.25s ease-out;
+}
+
+.modal-content.rtl-modal {
+  direction: rtl;
+  text-align: right;
+}
+
+.modal-content.ltr-modal {
+  direction: ltr;
+  text-align: left;
 }
 
 @keyframes modalFadeIn {
@@ -305,21 +332,29 @@ const closeModal = () => {
   margin: 0;
   font-size: 1.25rem;
   font-weight: 800;
-  color: #1e293b;
+  color: #0f172a;
 }
 
 .close-btn {
-  background: none;
-  border: none;
-  font-size: 1.6rem;
-  color: #94a3b8;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  min-height: 44px;
+  border-radius: 12px;
+  font-size: 1.15rem;
+  color: #64748b;
   cursor: pointer;
-  padding: 0;
-  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
 }
 
 .close-btn:hover {
-  color: #1e293b;
+  background: #f1f5f9;
+  color: #0f172a;
 }
 
 .modal-body {
@@ -340,10 +375,11 @@ const closeModal = () => {
 
 .close-action-btn {
   padding: 10px 22px;
+  min-height: 44px;
   background-color: #f1f5f9;
   color: #475569;
   border: 1px solid #cbd5e1;
-  border-radius: 8px;
+  border-radius: 10px;
   font-weight: 700;
   cursor: pointer;
   transition: all 0.2s;
@@ -352,10 +388,17 @@ const closeModal = () => {
 
 .close-action-btn:hover {
   background-color: #e2e8f0;
-  color: #1e293b;
+  color: #0f172a;
 }
 
-@media (max-width: 768px) {
+@media (max-width: 1024px) {
+  .footer-container {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 30px;
+  }
+}
+
+@media (max-width: 640px) {
   .footer-container {
     grid-template-columns: 1fr;
     gap: 30px;

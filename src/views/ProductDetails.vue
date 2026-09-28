@@ -1,8 +1,10 @@
 <template>
-  <div class="container">
+  <div class="product-details-container">
     
+    <!-- Direction-aware Back Button -->
     <RouterLink to="/" class="back-btn">
-      <i class="fa-solid fa-arrow-right"></i> العودة للمتجر
+      <i :class="isRtl ? 'fa-solid fa-arrow-right' : 'fa-solid fa-arrow-left'"></i>
+      <span>{{ t('product.backToStore') }}</span>
     </RouterLink>
 
     <!-- Shimmer Skeleton Loading -->
@@ -18,57 +20,179 @@
       </div>
     </div>
     
+    <!-- Product Content Container -->
     <div v-else-if="product" class="product-container">
       
       <div class="details-wrapper">
-        <!-- قسم الصورة -->
+        <!-- Image Section -->
         <div class="image-section">
-          <span v-if="product.stock === 0" class="badge out-stock">نفذت الكمية</span>
-          <span v-else-if="product.stock < 10" class="badge low-stock">متبقي عدد محدود!</span>
+          <span v-if="product.stock === 0" class="badge out-stock">
+            {{ t('product.outOfStock') }}
+          </span>
+          <span v-else-if="product.stock < 10" class="badge low-stock">
+            {{ t('product.lowStock') }}
+          </span>
           
           <img :src="product.image" :alt="product.title" class="main-image">
         </div>
         
-        <div class="info">
-          <span class="category">{{ product.category }}</span>
-          <h1>{{ product.title }}</h1>
+        <!-- Info Section -->
+        <div class="info-section">
+          <span class="category-pill">{{ translateCategory(product.category) }}</span>
+          <h1 class="product-title">{{ product.title }}</h1>
           
-          <!-- التقييم -->
+          <!-- Rating Summary Box -->
           <div class="rating-box">
             <div class="stars">
               <i class="fa-solid fa-star"></i>
               <span class="rate-num">{{ product.averageRating ?? product.rating?.rate ?? 0 }}</span>
             </div>
-            <span class="reviews-count">({{ product.reviewCount ?? product.rating?.count ?? reviews.length }} تقييم عميل)</span>
+            <span class="reviews-count">
+              {{ t('product.customerReviews', { count: product.reviewCount ?? product.rating?.count ?? reviews.length }) }}
+            </span>
           </div>
 
           <p class="desc">{{ product.description }}</p>
           
           <div class="price-stock-row">
-            <h2 class="price">${{ product.price }}</h2>
+            <div class="price-display-wrap">
+              <h2 class="price">${{ calculatedPrice.toFixed(2) }}</h2>
+              <span v-if="product.unitType === 'weight'" class="per-unit-hint">
+                (${{ Number(product.price).toFixed(2) }} {{ t('variants.perKg') }})
+              </span>
+            </div>
             <span class="stock-status" :class="{ 'red': product.stock === 0 }">
               <i class="fa-solid fa-box"></i> 
-              {{ product.stock > 0 ? `المخزون المتاح: ${product.stock} قطعة` : 'المنتج غير متوفر حالياً' }}
+              {{ product.stock > 0 ? (product.unitType === 'weight' ? `${product.stock} ${t('variants.kg')}` : t('product.stockAvailable', { count: product.stock })) : t('product.unavailable') }}
             </span>
+          </div>
+
+          <!-- Dynamic Variant Selector 1: Weight Selection (for weight-based produce) -->
+          <div v-if="product.unitType === 'weight'" class="variant-selector-box weight-box">
+            <div class="variant-label-row">
+              <span class="variant-title"><i class="fa-solid fa-scale-balanced"></i> {{ t('variants.chooseWeight') }}:</span>
+              <span class="selected-val-badge">{{ selectedWeight }} {{ t('variants.kg') }}</span>
+            </div>
+
+            <!-- Quick-Pick Weight Chips -->
+            <div class="weight-chips-row">
+              <button 
+                type="button" 
+                v-for="preset in [0.25, 0.5, 1.0, 2.0]" 
+                :key="preset"
+                class="weight-chip"
+                :class="{ 'active': selectedWeight === preset }"
+                @click="selectedWeight = preset"
+              >
+                {{ preset }} {{ t('variants.kg') }}
+              </button>
+            </div>
+
+            <!-- Fractional Stepper (0.25 kg increments) -->
+            <div class="fractional-stepper-row">
+              <span class="stepper-label">تعديل دقيق:</span>
+              <div class="weight-stepper">
+                <button 
+                  type="button" 
+                  class="stepper-action-btn" 
+                  :disabled="selectedWeight <= 0.25"
+                  @click="adjustWeight(-0.25)"
+                >
+                  <i class="fa-solid fa-minus"></i>
+                </button>
+                <span class="stepper-display">{{ selectedWeight }} {{ t('variants.kg') }}</span>
+                <button 
+                  type="button" 
+                  class="stepper-action-btn" 
+                  @click="adjustWeight(0.25)"
+                >
+                  <i class="fa-solid fa-plus"></i>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Dynamic Variant Selector 2: Size Selector (for apparel/footwear) -->
+          <div v-if="product.sizes && product.sizes.length > 0" class="variant-selector-box">
+            <div class="variant-label-row">
+              <span class="variant-title"><i class="fa-solid fa-ruler-horizontal"></i> {{ t('variants.size') }}:</span>
+              <span class="selected-val-badge" v-if="selectedSize">{{ selectedSize }}</span>
+            </div>
+            <div class="sizes-pills-row">
+              <button 
+                type="button" 
+                v-for="s in product.sizes" 
+                :key="s"
+                class="size-pill-btn"
+                :class="{ 'active': selectedSize === s }"
+                @click="selectedSize = s; variantValidationError = ''"
+              >
+                {{ s }}
+              </button>
+            </div>
+          </div>
+
+          <!-- Dynamic Variant Selector 3: Color Selector (circular swatches) -->
+          <div v-if="product.colors && product.colors.length > 0" class="variant-selector-box">
+            <div class="variant-label-row">
+              <span class="variant-title"><i class="fa-solid fa-palette"></i> {{ t('variants.color') }}:</span>
+              <span class="selected-val-badge" v-if="selectedColor">{{ selectedColor.name }}</span>
+            </div>
+            <div class="colors-swatches-row">
+              <button 
+                type="button" 
+                v-for="c in product.colors" 
+                :key="c.name"
+                class="color-swatch-circle"
+                :class="{ 'active': selectedColor?.name === c.name }"
+                :style="{ backgroundColor: c.hex }"
+                :title="c.name"
+                @click="selectedColor = c; variantValidationError = ''"
+              >
+                <i v-if="selectedColor?.name === c.name" class="fa-solid fa-check check-indicator"></i>
+              </button>
+            </div>
+          </div>
+
+          <!-- Quantity Stepper for Piece Items -->
+          <div v-if="product.unitType !== 'weight'" class="piece-quantity-row">
+            <span class="variant-title">{{ t('variants.stockPiece') }}:</span>
+            <div class="piece-stepper">
+              <button type="button" class="stepper-action-btn" :disabled="selectedQuantity <= 1" @click="selectedQuantity--">
+                <i class="fa-solid fa-minus"></i>
+              </button>
+              <span class="stepper-display">{{ selectedQuantity }}</span>
+              <button type="button" class="stepper-action-btn" :disabled="selectedQuantity >= product.stock" @click="selectedQuantity++">
+                <i class="fa-solid fa-plus"></i>
+              </button>
+            </div>
+          </div>
+
+          <!-- Validation Error Banner -->
+          <div v-if="variantValidationError" class="variant-error-alert">
+            <i class="fa-solid fa-circle-exclamation"></i>
+            <span>{{ variantValidationError }}</span>
           </div>
 
           <!-- Actions Row with Wishlist Toggle -->
           <div class="details-actions-row">
             <button 
-              class="add-to-cart" 
+              type="button"
+              class="add-to-cart-btn pulse-cta" 
               :disabled="product.stock === 0"
               :class="{ 'disabled-btn': product.stock === 0 }"
-              @click="cartStore.addCart(product)"
+              @click="handleAddToCartWithVariants"
             >
               <i class="fa-solid fa-cart-shopping"></i>
-              {{ product.stock === 0 ? 'غير متاح حالياً' : 'أضف إلى السلة' }}
+              <span>{{ product.stock === 0 ? t('product.unavailable') : t('product.addToCart') }}</span>
             </button>
 
             <button 
               type="button" 
               class="details-fav-btn"
               :class="{ 'is-fav': wishlistStore.isInWishlist(product.id) }"
-              :title="wishlistStore.isInWishlist(product.id) ? 'إزالة من المفضلة' : 'إضافة للمفضلة'"
+              :title="wishlistStore.isInWishlist(product.id) ? t('wishlist.removeFromWishlist') : t('wishlist.addToWishlist')"
+              :aria-label="wishlistStore.isInWishlist(product.id) ? t('wishlist.removeFromWishlist') : t('wishlist.addToWishlist')"
               @click="toggleWishlist"
             >
               <i :class="wishlistStore.isInWishlist(product.id) ? 'fa-solid fa-heart' : 'fa-regular fa-heart'"></i>
@@ -77,20 +201,22 @@
         </div>
       </div>
 
-      <!-- Reviews Section with Rating Breakdown -->
+      <!-- Customer Reviews & Breakdown Section -->
       <div class="reviews-section">
         <div class="reviews-section-header">
-          <h3>تقييمات وآراء العملاء ({{ reviews.length }})</h3>
+          <h3>{{ t('product.ratingBreakdown') }} ({{ reviews.length }})</h3>
         </div>
 
-        <!-- Rating Breakdown (Amazon/Shopify Style) -->
+        <!-- Rating Breakdown Card (Amazon/Shopify Style) -->
         <div class="rating-breakdown-card">
           <div class="rating-overview">
             <div class="score-number">{{ product.averageRating ?? product.rating?.rate ?? 0 }}</div>
             <div class="overview-stars">
               <i v-for="n in 5" :key="n" class="fa-solid fa-star" :class="{ 'gold': n <= Math.round(product.averageRating ?? product.rating?.rate ?? 0) }"></i>
             </div>
-            <span class="total-reviews-label">{{ product.reviewCount ?? product.rating?.count ?? reviews.length }} تقييم موثق</span>
+            <span class="total-reviews-label">
+              {{ product.reviewCount ?? product.rating?.count ?? reviews.length }} {{ t('product.verifiedReviews') }}
+            </span>
           </div>
 
           <div class="breakdown-bars">
@@ -106,7 +232,7 @@
         
         <div v-if="loadingReviews" class="loading-reviews">
           <div class="loader-spinner-sm"></div>
-          <p>جاري تحميل التقييمات...</p>
+          <p>{{ t('product.loadingReviews') }}</p>
         </div>
 
         <!-- Reviews Grid -->
@@ -122,7 +248,7 @@
                   <div class="name-badge-row">
                     <span class="reviewer-name">{{ rev.userName }}</span>
                     <span v-if="isVerifiedBuyer(rev)" class="verified-buyer-badge">
-                      <i class="fa-solid fa-circle-check"></i> مشتري موثق
+                      <i class="fa-solid fa-circle-check"></i> {{ t('product.verifiedBuyer') }}
                     </span>
                   </div>
                   <span class="review-date">{{ formatRelativeTime(rev) }}</span>
@@ -139,18 +265,19 @@
         </div>
 
         <div v-else class="no-reviews">
-          <p>لا توجد تعليقات حتى الآن على هذا المنتج. كن أول من يقيمه!</p>
+          <p>{{ t('product.noReviews') }}</p>
         </div>
       </div>
 
-      <!-- نموذج إضافة تقييم -->
+      <!-- Add Review Form Component -->
       <ReviewForm :productId="product.id" @reviewAdded="handleReviewAdded" />
     </div>
     
+    <!-- Product Not Found State -->
     <div v-else class="error-msg">
       <i class="fa-solid fa-triangle-exclamation"></i>
-      <h2>عفواً، هذا المنتج غير موجود أو تم حذفه.</h2>
-      <RouterLink to="/" class="back-home-btn">الذهاب للرئيسية</RouterLink>
+      <h2>{{ t('product.notFound') }}</h2>
+      <RouterLink to="/" class="back-home-btn">{{ t('product.goHome') }}</RouterLink>
     </div>
   </div>
 </template>
@@ -163,7 +290,11 @@ import { useCartStore } from '../stores/cartStore'
 import { useWishlistStore } from '../stores/wishlistStore'
 import { db, auth } from '../firebase/config'
 import { collection, getDocs } from 'firebase/firestore'
+import { useI18n } from 'vue-i18n'
 import ReviewForm from '../components/ReviewForm.vue'
+
+const { t, locale } = useI18n()
+const isRtl = computed(() => locale.value === 'ar')
 
 const route = useRoute() 
 const product = ref(null)
@@ -175,10 +306,83 @@ const cartStore = useCartStore()
 const wishlistStore = useWishlistStore()
 const verifiedUserIds = ref(new Set())
 
+const selectedWeight = ref(1.0)
+const selectedSize = ref(null)
+const selectedColor = ref(null)
+const selectedQuantity = ref(1)
+const variantValidationError = ref('')
+
+const calculatedPrice = computed(() => {
+  if (!product.value) return 0
+  if (product.value.unitType === 'weight') {
+    return Number((Number(product.value.price) * selectedWeight.value).toFixed(2))
+  }
+  return Number((Number(product.value.price) * selectedQuantity.value).toFixed(2))
+})
+
+const adjustWeight = (delta) => {
+  const next = Number((selectedWeight.value + delta).toFixed(2))
+  if (next >= 0.25) {
+    selectedWeight.value = next
+  }
+}
+
+const handleAddToCartWithVariants = () => {
+  variantValidationError.value = ''
+  
+  if (product.value.sizes && product.value.sizes.length > 0 && !selectedSize.value) {
+    variantValidationError.value = t('variants.selectVariantRequired')
+    return
+  }
+  if (product.value.colors && product.value.colors.length > 0 && !selectedColor.value) {
+    variantValidationError.value = t('variants.selectVariantRequired')
+    return
+  }
+
+  cartStore.addCart(product.value, {
+    selectedSize: selectedSize.value,
+    selectedColor: selectedColor.value,
+    selectedWeight: selectedWeight.value,
+    unitType: product.value.unitType || 'piece',
+    quantity: product.value.unitType === 'weight' ? selectedWeight.value : selectedQuantity.value
+  })
+}
+
+const initDefaultSelections = () => {
+  if (!product.value) return
+  if (product.value.sizes && product.value.sizes.length > 0) {
+    selectedSize.value = product.value.sizes[0]
+  } else {
+    selectedSize.value = null
+  }
+
+  if (product.value.colors && product.value.colors.length > 0) {
+    selectedColor.value = product.value.colors[0]
+  } else {
+    selectedColor.value = null
+  }
+
+  if (product.value.unitType === 'weight') {
+    selectedWeight.value = 1.0
+  } else {
+    selectedQuantity.value = 1
+  }
+}
+
 const toggleWishlist = () => {
   if (product.value) {
     wishlistStore.toggleWishlist(product.value, auth.currentUser?.uid)
   }
+}
+
+const translateCategory = (cat) => {
+  if (!cat) return ''
+  const cleanKey = cat.trim().toLowerCase().replace(/'/g, '')
+  const translation = t(`categories['${cleanKey}']`)
+  if (translation === `categories['${cleanKey}']` || translation.includes('categories')) {
+    return cat 
+  }
+  return translation
 }
 
 const checkVerifiedBuyers = async (productId) => {
@@ -212,294 +416,521 @@ const getInitials = (name) => {
 
 const formatRelativeTime = (rev) => {
   const dateVal = rev.createdAt?.toDate ? rev.createdAt.toDate() : (rev.date ? new Date(rev.date) : null)
-  if (!dateVal || isNaN(dateVal.getTime())) return rev.date || 'مؤخراً'
+  if (!dateVal || isNaN(dateVal.getTime())) return rev.date || t('product.timeJustNow')
 
   const diffMs = Date.now() - dateVal.getTime()
   const diffHours = Math.floor(diffMs / (1000 * 60 * 60))
   const diffDays = Math.floor(diffHours / 24)
 
-  if (diffHours < 1) return 'الآن'
-  if (diffHours < 24) return `منذ ${diffHours} ساعة`
-  if (diffDays === 1) return 'أمس'
-  if (diffDays < 7) return `منذ ${diffDays} أيام`
-  if (diffDays < 30) return `منذ ${Math.floor(diffDays / 7)} أسابيع`
-  return dateVal.toLocaleDateString('ar-EG')
+  if (diffHours < 1) {
+    return t('product.timeJustNow')
+  } else if (diffHours < 24) {
+    return t('product.timeHoursAgo', { count: diffHours })
+  } else if (diffDays <= 30) {
+    return t('product.timeDaysAgo', { count: diffDays })
+  }
+  return dateVal.toLocaleDateString(locale.value === 'ar' ? 'ar-EG' : 'en-US')
 }
 
 const ratingBreakdown = computed(() => {
   const counts = { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 }
   const total = reviews.value.length
 
-  reviews.value.forEach(r => {
-    const star = Math.min(5, Math.max(1, Math.round(Number(r.rating) || 5)))
-    counts[star] = (counts[star] || 0) + 1
-  })
-
-  // If no reviews yet, use product rating fallback
-  if (total === 0 && product.value?.rating) {
-    const baseRate = Math.round(product.value.rating.rate || 5)
-    counts[baseRate] = product.value.rating.count || 1
+  if (total === 0) {
+    return [5, 4, 3, 2, 1].map(stars => ({ stars, count: 0, percent: 0 }))
   }
 
-  const effectiveTotal = total > 0 ? total : (product.value?.rating?.count || 1)
-
-  return [5, 4, 3, 2, 1].map(stars => {
-    const count = counts[stars] || 0
-    const percent = Math.round((count / effectiveTotal) * 100)
-    return { stars, count, percent }
+  reviews.value.forEach(r => {
+    const rate = Math.round(Number(r.rating) || 5)
+    if (counts[rate] !== undefined) counts[rate]++
   })
+
+  return [5, 4, 3, 2, 1].map(stars => ({
+    stars,
+    count: counts[stars],
+    percent: Math.round((counts[stars] / total) * 100)
+  }))
 })
 
-const loadReviews = async (productId) => {
-  loadingReviews.value = true
-  try {
-    const reviewsColRef = collection(db, 'products', productId, 'reviews')
-    const snap = await getDocs(reviewsColRef)
-    const fetched = snap.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    }))
-
-    // Sort newest first
-    fetched.sort((a, b) => {
-      const timeA = a.createdAt?.toMillis ? a.createdAt.toMillis() : (a.date ? new Date(a.date).getTime() : 0)
-      const timeB = b.createdAt?.toMillis ? b.createdAt.toMillis() : (b.date ? new Date(b.date).getTime() : 0)
-      return timeB - timeA
-    })
-
-    if (fetched.length > 0) {
-      reviews.value = fetched
-    } else if (Array.isArray(product.value?.reviews) && product.value.reviews.length > 0) {
-      reviews.value = [...product.value.reviews]
-    } else {
-      reviews.value = []
-    }
-  } catch (err) {
-    console.error("خطأ في جلب تقييمات المنتج من الـ subcollection:", err)
-    if (Array.isArray(product.value?.reviews)) {
-      reviews.value = [...product.value.reviews]
-    }
-  } finally {
-    loadingReviews.value = false
-  }
-}
-
-const handleReviewAdded = (newRev) => {
-  reviews.value.unshift(newRev)
-
-  if (product.value) {
-    const currentCount = Number(product.value.reviewCount ?? product.value.rating?.count ?? 0)
-    const currentRate = Number(product.value.averageRating ?? product.value.rating?.rate ?? 0)
-    const newCount = currentCount + 1
-    const totalOldRate = currentRate * currentCount
-    const newRate = Number(((totalOldRate + newRev.rating) / newCount).toFixed(1))
-
-    product.value.reviewCount = newCount
-    product.value.averageRating = newRate
-    product.value.rating = {
-      count: newCount,
-      rate: newRate
-    }
-  }
+const handleReviewAdded = (newReview) => {
+  reviews.value.unshift(newReview)
+  const currentCount = product.value.reviewCount ?? product.value.rating?.count ?? (reviews.value.length - 1)
+  const currentRate = product.value.averageRating ?? product.value.rating?.rate ?? 5
+  
+  const updatedCount = currentCount + 1
+  const updatedAverage = Number((((currentRate * currentCount) + Number(newReview.rating)) / updatedCount).toFixed(1))
+  
+  product.value.reviewCount = updatedCount
+  product.value.averageRating = updatedAverage
+  if (!product.value.rating) product.value.rating = {}
+  product.value.rating.count = updatedCount
+  product.value.rating.rate = updatedAverage
 }
 
 onMounted(async () => {
-  const id = route.params.id
-  product.value = await store.getProductById(id)
+  const productId = route.params.id
+  if (store.products.length === 0) {
+    await store.fetchdata()
+  }
+  
+  product.value = store.products.find(p => p.id == productId)
+  if (!product.value) {
+    product.value = await store.getProductById(productId)
+  }
   isloading.value = false
+  
   if (product.value) {
-    await Promise.all([
-      loadReviews(id),
-      checkVerifiedBuyers(id)
-    ])
+    initDefaultSelections()
+    loadingReviews.value = true
+    try {
+      const revs = await store.fetchProductReviews(product.value.id)
+      reviews.value = revs
+      await checkVerifiedBuyers(product.value.id)
+    } finally {
+      loadingReviews.value = false
+    }
   }
 })
 </script>
 
 <style scoped>
-.container {
+.product-details-container {
   max-width: 1200px;
-  margin: 0 auto;
-  padding: 40px 20px;
-  direction: ltr; 
+  margin: 32px auto;
+  padding: 0 24px;
+  width: 100%;
 }
 
 .back-btn {
   display: inline-flex;
   align-items: center;
   gap: 10px;
-  margin-bottom: 30px;
+  margin-bottom: 28px;
   color: #475569;
+  font-weight: 700;
+  font-size: 0.95rem;
+  padding: 8px 16px;
+  min-height: 44px;
+  background: white;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
   text-decoration: none;
-  font-weight: 600;
-  font-size: 1rem;
-  transition: color 0.3s ease;
+  transition: all 0.2s ease;
 }
 
 .back-btn:hover {
-  color: #2563eb;
+  color: #059669;
+  border-color: #cbd5e1;
+  transform: translateY(-1px);
+}
+
+.product-container {
+  display: flex;
+  flex-direction: column;
 }
 
 .details-wrapper {
   display: flex;
-  flex-wrap: wrap;
-  gap: 40px;
-  background: #fff;
+  gap: 48px;
+  background: #ffffff;
   padding: 40px;
-  border-radius: 20px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.04);
-  border: 1px solid rgba(0,0,0,0.03);
+  border-radius: 24px;
+  box-shadow: 0 4px 25px -2px rgba(0,0,0,0.04);
+  border: 1px solid rgba(226, 232, 240, 0.85);
 }
 
 .image-section {
   flex: 1;
-  min-width: 320px;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  padding: 30px;
-  background: #f8fafc;
-  border-radius: 16px;
   position: relative;
-  overflow: hidden;
+  background: #f8fafc;
+  border-radius: 20px;
+  padding: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 420px;
+  border: 1px solid #f1f5f9;
 }
 
 .main-image {
   max-width: 100%;
-  height: 380px;
+  max-height: 380px;
   object-fit: contain;
   mix-blend-mode: multiply;
   transition: transform 0.4s ease;
 }
 
 .main-image:hover {
-  transform: scale(1.08);
+  transform: scale(1.04);
 }
 
 .badge {
   position: absolute;
-  top: 20px;
-  left: 20px;
+  top: 18px;
+  inset-inline-start: 18px;
   padding: 6px 14px;
-  border-radius: 30px;
+  border-radius: 999px;
   font-size: 0.8rem;
-  font-weight: bold;
+  font-weight: 800;
   color: white;
   z-index: 2;
 }
 
-.out-stock { background: #ef4444; }
-.low-stock { background: #f59e0b; }
+.out-stock {
+  background: #ef4444;
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+}
 
-.info {
-  flex: 1.4;
-  min-width: 320px;
+.low-stock {
+  background: #f59e0b;
+  box-shadow: 0 4px 12px rgba(245, 158, 11, 0.3);
+}
+
+.info-section {
+  flex: 1;
   display: flex;
   flex-direction: column;
-  justify-content: flex-start;
+  justify-content: center;
 }
 
-.category {
-  color: #2563eb;
-  text-transform: uppercase;
-  font-size: 0.85rem;
-  font-weight: 700;
-  letter-spacing: 1.5px;
-  margin-bottom: 12px;
-}
-
-h1 {
-  font-size: 1.8rem;
-  color: #1e293b;
-  margin-bottom: 15px;
-  line-height: 1.4;
+.category-pill {
+  display: inline-block;
+  align-self: flex-start;
+  padding: 4px 14px;
+  background: #ecfdf5;
+  color: #059669;
+  border-radius: 999px;
+  font-size: 0.82rem;
   font-weight: 800;
+  margin-bottom: 14px;
+}
+
+.product-title {
+  font-size: 1.8rem;
+  font-weight: 800;
+  color: #0f172a;
+  line-height: 1.35;
+  margin: 0 0 16px 0;
 }
 
 .rating-box {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   margin-bottom: 20px;
 }
 
 .stars {
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 4px;
   color: #f59e0b;
-  font-weight: 700;
+  font-size: 1rem;
 }
 
 .rate-num {
-  color: #1e293b;
+  font-weight: 800;
+  color: #0f172a;
+  font-size: 1.05rem;
 }
 
 .reviews-count {
-  color: #94a3b8;
-  font-size: 0.9rem;
+  color: #64748b;
+  font-size: 0.88rem;
 }
 
 .desc {
+  font-size: 0.98rem;
   line-height: 1.8;
-  color: #64748b;
-  font-size: 1rem;
-  margin-bottom: 25px;
-  border-bottom: 1px solid #f1f5f9;
-  padding-bottom: 20px;
+  color: #475569;
+  margin: 0 0 28px 0;
 }
 
 .price-stock-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 30px;
-  flex-wrap: wrap;
-  gap: 15px;
+  padding: 18px 24px;
+  background: #f8fafc;
+  border-radius: 16px;
+  border: 1px solid #e2e8f0;
+  margin-bottom: 28px;
 }
 
 .price {
-  color: #0f172a;
-  font-size: 2.3rem;
+  font-size: 2rem;
   font-weight: 900;
+  color: #0f172a;
+  margin: 0;
 }
 
 .stock-status {
-  font-size: 0.95rem;
-  color: #10b981;
-  font-weight: 600;
-  background: #ecfdf5;
-  padding: 8px 14px;
-  border-radius: 8px;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #059669;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .stock-status.red {
   color: #ef4444;
-  background: #fef2f2;
 }
 
-.add-to-cart {
-  padding: 16px 35px;
-  background: #2563eb;
+/* Variant Selection Styles */
+.variant-selector-box {
+  margin-bottom: 22px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 16px;
+}
+
+.variant-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.variant-title {
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: #334155;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.selected-val-badge {
+  font-size: 0.8rem;
+  font-weight: 700;
+  background: #e2e8f0;
+  color: #1e293b;
+  padding: 2px 10px;
+  border-radius: 999px;
+}
+
+.weight-chips-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.weight-chip-btn {
+  padding: 8px 16px;
+  background: #ffffff;
+  border: 1.5px solid #cbd5e1;
+  border-radius: 10px;
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: #334155;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.weight-chip-btn:hover {
+  border-color: #059669;
+  color: #059669;
+}
+
+.weight-chip-btn.active {
+  background: #ecfdf5;
+  border-color: #059669;
+  color: #059669;
+  box-shadow: 0 2px 8px rgba(5, 150, 105, 0.15);
+}
+
+.fractional-stepper-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 10px;
+  border-top: 1px dashed #cbd5e1;
+}
+
+.stepper-label {
+  font-size: 0.85rem;
+  color: #64748b;
+  font-weight: 600;
+}
+
+.weight-stepper, .piece-stepper {
+  display: flex;
+  align-items: center;
+  background: #ffffff;
+  border: 1.5px solid #cbd5e1;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.stepper-action-btn {
+  width: 36px;
+  height: 36px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: #334155;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s ease;
+}
+
+.stepper-action-btn:hover:not(:disabled) {
+  background: #f1f5f9;
+  color: #059669;
+}
+
+.stepper-action-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.stepper-display {
+  padding: 0 14px;
+  font-weight: 800;
+  font-size: 0.92rem;
+  color: #0f172a;
+  min-width: 70px;
+  text-align: center;
+}
+
+.sizes-pills-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.size-pill-btn {
+  min-width: 44px;
+  height: 42px;
+  padding: 0 14px;
+  background: #ffffff;
+  border: 1.5px solid #cbd5e1;
+  border-radius: 10px;
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: #334155;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.size-pill-btn:hover {
+  border-color: #059669;
+  color: #059669;
+  transform: translateY(-1px);
+}
+
+.size-pill-btn.active {
+  background: #0f172a;
+  border-color: #0f172a;
+  color: #ffffff;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.2);
+}
+
+.colors-swatches-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.color-swatch-circle {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  border: 2px solid #ffffff;
+  box-shadow: 0 0 0 1.5px #cbd5e1;
+  cursor: pointer;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.color-swatch-circle:hover {
+  transform: scale(1.12);
+  box-shadow: 0 0 0 2px #059669;
+}
+
+.color-swatch-circle.active {
+  transform: scale(1.15);
+  box-shadow: 0 0 0 3px #059669, 0 4px 10px rgba(5, 150, 105, 0.25);
+}
+
+.check-indicator {
+  color: #ffffff;
+  font-size: 0.75rem;
+  filter: drop-shadow(0 1px 2px rgba(0,0,0,0.8));
+}
+
+.piece-quantity-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 22px;
+  padding: 12px 16px;
+  background: #f8fafc;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+}
+
+.variant-error-alert {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #ef4444;
+  font-weight: 700;
+  font-size: 0.88rem;
+  border-radius: 12px;
+  margin-bottom: 20px;
+  animation: shake 0.3s ease-in-out;
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-4px); }
+  75% { transform: translateX(4px); }
+}
+
+.details-actions-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.add-to-cart-btn {
+  flex: 1;
+  padding: 16px 28px;
+  min-height: 52px;
+  background: #059669;
   color: white;
   border: none;
   border-radius: 14px;
-  font-size: 1.1rem;
-  font-weight: 700;
+  font-size: 1.05rem;
+  font-weight: 800;
   cursor: pointer;
-  transition: all 0.3s ease;
-  box-shadow: 0 4px 15px rgba(5, 150, 105, 0.25);
-  display: inline-flex;
+  display: flex;
   align-items: center;
   justify-content: center;
-  gap: 10px;
-  background: #059669;
+  gap: 12px;
+  transition: all 0.2s ease;
+  font-family: inherit;
+  box-shadow: 0 4px 16px rgba(5, 150, 105, 0.25);
 }
 
-.add-to-cart:hover:not(:disabled) {
+.add-to-cart-btn:hover:not(:disabled) {
   background: #047857;
   transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(5, 150, 105, 0.35);
+  box-shadow: 0 8px 22px rgba(5, 150, 105, 0.35);
 }
 
 .disabled-btn {
@@ -509,16 +940,11 @@ h1 {
   box-shadow: none !important;
 }
 
-/* Actions Row & Favorite Button */
-.details-actions-row {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-}
-
 .details-fav-btn {
   width: 52px;
   height: 52px;
+  min-width: 52px;
+  min-height: 52px;
   border-radius: 14px;
   background: #ffffff;
   border: 1px solid #e2e8f0;
@@ -542,7 +968,7 @@ h1 {
 .details-fav-btn.is-fav {
   color: #ef4444;
   background: #fef2f2;
-  border-color: #fecaca;
+  border-color: #fee2e2;
 }
 
 /* Skeletons */
@@ -608,14 +1034,14 @@ h1 {
 .reviews-section {
   margin-top: 50px;
   background: #fff;
-  padding: 35px;
-  border-radius: 20px;
+  padding: 36px;
+  border-radius: 24px;
   box-shadow: 0 4px 20px -2px rgba(0,0,0,0.04);
-  border: 1px solid rgba(226, 232, 240, 0.8);
+  border: 1px solid rgba(226, 232, 240, 0.85);
 }
 
 .reviews-section-header h3 {
-  font-size: 1.4rem;
+  font-size: 1.35rem;
   color: #0f172a;
   margin: 0 0 24px 0;
   font-weight: 800;
@@ -627,9 +1053,9 @@ h1 {
   gap: 40px;
   background: #f8fafc;
   padding: 24px 30px;
-  border-radius: 16px;
+  border-radius: 18px;
   border: 1px solid rgba(226, 232, 240, 0.9);
-  margin-bottom: 30px;
+  margin-bottom: 32px;
 }
 
 .rating-overview {
@@ -649,9 +1075,9 @@ h1 {
 
 .overview-stars {
   display: flex;
-  gap: 4px;
+  gap: 3px;
   color: #cbd5e1;
-  font-size: 1rem;
+  font-size: 1.1rem;
 }
 
 .overview-stars .gold {
@@ -659,7 +1085,7 @@ h1 {
 }
 
 .total-reviews-label {
-  font-size: 0.82rem;
+  font-size: 0.8rem;
   color: #64748b;
   font-weight: 600;
 }
@@ -678,10 +1104,10 @@ h1 {
 }
 
 .star-label {
-  font-size: 0.82rem;
+  font-size: 0.85rem;
   font-weight: 700;
-  color: #475569;
-  min-width: 45px;
+  color: #334155;
+  width: 44px;
   display: flex;
   align-items: center;
   gap: 4px;
@@ -689,7 +1115,7 @@ h1 {
 
 .star-label i {
   color: #f59e0b;
-  font-size: 0.72rem;
+  font-size: 0.78rem;
 }
 
 .bar-track {
@@ -708,14 +1134,13 @@ h1 {
 }
 
 .percent-label {
-  font-size: 0.8rem;
-  font-weight: 700;
+  font-size: 0.82rem;
   color: #64748b;
-  min-width: 38px;
-  text-align: left;
+  width: 40px;
+  text-align: end;
+  font-weight: 600;
 }
 
-/* Reviews List */
 .reviews-grid {
   display: flex;
   flex-direction: column;
@@ -723,20 +1148,17 @@ h1 {
 }
 
 .review-card {
-  background: #ffffff;
   padding: 20px;
+  background: #f8fafc;
   border-radius: 14px;
-  border: 1px solid rgba(226, 232, 240, 0.8);
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.02);
+  border: 1px solid #f1f5f9;
 }
 
 .review-header {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
+  margin-bottom: 12px;
 }
 
 .reviewer-profile {
@@ -754,10 +1176,10 @@ h1 {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-weight: 800;
-  font-size: 0.85rem;
-  overflow: hidden;
+  font-weight: bold;
+  font-size: 0.95rem;
   flex-shrink: 0;
+  overflow: hidden;
 }
 
 .rev-avatar-img {
@@ -766,16 +1188,11 @@ h1 {
   object-fit: cover;
 }
 
-.reviewer-meta {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
 .name-badge-row {
   display: flex;
   align-items: center;
   gap: 8px;
+  margin-bottom: 2px;
 }
 
 .reviewer-name {
@@ -785,16 +1202,15 @@ h1 {
 }
 
 .verified-buyer-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
   font-size: 0.72rem;
   font-weight: 700;
   color: #059669;
   background: #ecfdf5;
   padding: 2px 8px;
   border-radius: 999px;
-  border: 1px solid #a7f3d0;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .review-stars {
@@ -823,7 +1239,8 @@ h1 {
 .no-reviews {
   color: #94a3b8;
   text-align: center;
-  padding: 20px;
+  padding: 24px;
+  font-size: 0.95rem;
 }
 
 .loading-reviews {
@@ -840,13 +1257,12 @@ h1 {
   width: 22px;
   height: 22px;
   border: 3px solid #f1f5f9;
-  border-top: 3px solid #2563eb;
+  border-top: 3px solid #059669;
   border-radius: 50%;
   animation: spin 1s linear infinite;
 }
 
-
-.loading-state, .error-msg {
+.error-msg {
   text-align: center;
   padding: 80px 20px;
   color: #64748b;
@@ -854,16 +1270,26 @@ h1 {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 15px;
+  gap: 16px;
 }
 
-.loader-spinner {
-  width: 50px;
-  height: 50px;
-  border: 4px solid #f1f5f9;
-  border-top: 4px solid #2563eb;
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
+.error-msg i {
+  font-size: 3rem;
+  color: #ef4444;
+}
+
+.back-home-btn {
+  margin-top: 12px;
+  padding: 12px 28px;
+  min-height: 44px;
+  background: #0f172a;
+  color: white;
+  border-radius: 10px;
+  text-decoration: none;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 @keyframes spin {
@@ -871,37 +1297,77 @@ h1 {
   100% { transform: rotate(360deg); }
 }
 
-.error-msg i {
-  font-size: 3rem;
-  color: #ef4444;
-  margin-bottom: 10px;
-}
-
-.back-home-btn {
-  margin-top: 15px;
-  padding: 10px 25px;
-  background: #1e293b;
-  color: white;
-  border-radius: 8px;
-  text-decoration: none;
-  font-weight: 600;
-}
-
-
-@media (max-width: 768px) {
+/* Tablet & Mobile Responsiveness */
+@media (max-width: 900px) {
   .details-wrapper {
     flex-direction: column;
+    padding: 24px;
+    gap: 32px;
+  }
+
+  .skeleton-details-wrapper {
+    flex-direction: column;
+    padding: 24px;
+    gap: 24px;
+  }
+
+  .image-section {
+    min-height: 320px;
+  }
+}
+
+@media (max-width: 640px) {
+  .product-details-container {
+    padding: 0 16px;
+  }
+
+  .rating-breakdown-card {
+    flex-direction: column;
+    gap: 24px;
     padding: 20px;
   }
-  
-  .add-to-cart {
+
+  .rating-overview {
+    min-width: 100%;
+  }
+
+  .breakdown-bars {
     width: 100%;
+  }
+
+  .reviews-section {
+    padding: 20px 16px;
   }
 
   .price-stock-row {
     flex-direction: column;
     align-items: flex-start;
-    gap: 10px;
+    gap: 12px;
+    padding: 16px;
+  }
+}
+
+@media (max-width: 480px) {
+  .product-title {
+    font-size: 1.4rem;
+  }
+
+  .price {
+    font-size: 1.6rem;
+  }
+
+  .details-actions-row {
+    flex-direction: column;
+    width: 100%;
+  }
+
+  .add-to-cart-btn {
+    width: 100%;
+  }
+
+  .details-fav-btn {
+    width: 100%;
+    border-radius: 12px;
   }
 }
 </style>

@@ -1,8 +1,12 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import AdminLayout from '../components/AdminLayout.vue'
 import { useSettingsStore } from '../stores/settingsStore'
 import Swal from 'sweetalert2'
+
+const { t, locale } = useI18n()
+const isRtl = computed(() => locale.value === 'ar')
 
 const settingsStore = useSettingsStore()
 
@@ -54,8 +58,8 @@ const handleLogoUpload = async (event) => {
   if (file.size > 2 * 1024 * 1024) {
     Swal.fire({
       icon: 'error',
-      title: 'حجم الملف كبير',
-      text: 'الحد الأقصى لحجم الشعار هو 2 ميجابايت.'
+      title: t('common.error'),
+      text: isRtl.value ? 'الحد الأقصى لحجم الشعار هو 2 ميجابايت.' : 'Maximum logo file size is 2MB.'
     })
     return
   }
@@ -67,7 +71,7 @@ const handleLogoUpload = async (event) => {
     formData.value.logoType = 'image'
     Swal.fire({
       icon: 'success',
-      title: 'تم رفع الشعار',
+      title: t('common.success'),
       timer: 1500,
       showConfirmButton: false
     })
@@ -85,8 +89,8 @@ const handleFaviconUpload = async (event) => {
   if (file.size > 1 * 1024 * 1024) {
     Swal.fire({
       icon: 'error',
-      title: 'حجم الملف كبير',
-      text: 'الحد الأقصى لحجم الأيقونة هو 1 ميجابايت.'
+      title: t('common.error'),
+      text: isRtl.value ? 'الحد الأقصى لحجم الأيقونة هو 1 ميجابايت.' : 'Maximum favicon file size is 1MB.'
     })
     return
   }
@@ -97,7 +101,7 @@ const handleFaviconUpload = async (event) => {
     formData.value.faviconUrl = url
     Swal.fire({
       icon: 'success',
-      title: 'تم رفع أيقونة المتجر',
+      title: t('common.success'),
       timer: 1500,
       showConfirmButton: false
     })
@@ -111,7 +115,15 @@ const handleFaviconUpload = async (event) => {
 const handleSave = async () => {
   const success = await settingsStore.saveSettings(formData.value)
   if (success) {
-    settingsStore.updateDocumentTitle('ar')
+    settingsStore.updateDocumentTitle(locale.value)
+    Swal.fire({
+      icon: 'success',
+      title: t('common.success'),
+      toast: true,
+      position: 'top-end',
+      showConfirmButton: false,
+      timer: 2000
+    })
   }
 }
 </script>
@@ -123,8 +135,8 @@ const handleSave = async () => {
       <!-- Page Header -->
       <div class="page-header">
         <div class="header-text">
-          <h1><i class="fa-solid fa-sliders"></i> إعدادات المتجر والهوية</h1>
-          <p>تخصيص العلامة التجارية، وسائل التواصل، ووضع الصيانة العام للمتجر</p>
+          <h1><i class="fa-solid fa-sliders"></i> {{ t('admin.settingsManage') }}</h1>
+          <p>{{ t('admin.brandingSub') }}</p>
         </div>
 
         <button 
@@ -135,26 +147,26 @@ const handleSave = async () => {
         >
           <i v-if="settingsStore.isSaving" class="fa-solid fa-circle-notch fa-spin"></i>
           <i v-else class="fa-solid fa-floppy-disk"></i>
-          <span>{{ settingsStore.isSaving ? 'جاري الحفظ...' : 'حفظ التعديلات' }}</span>
+          <span>{{ settingsStore.isSaving ? t('admin.savingSettings') : t('common.save') }}</span>
         </button>
       </div>
 
       <div class="settings-sections-grid">
         
-        <!-- Section 1: Maintenance Mode (Kill Switch) -->
+        <!-- Section 1: Maintenance Mode -->
         <div class="settings-card maintenance-card">
           <div class="card-title-row">
             <div class="card-icon warning-icon">
               <i class="fa-solid fa-triangle-exclamation"></i>
             </div>
             <div>
-              <h3>وضع الصيانة العام (Maintenance Mode)</h3>
-              <p>قفل المتجر مؤقتاً أمام العملاء والزوار مع إبقاء صلاحية دخول لوحة الإدارة</p>
+              <h3>{{ t('admin.maintenanceSectionTitle') }}</h3>
+              <p>{{ t('admin.maintenanceSectionSub') }}</p>
             </div>
           </div>
 
           <div class="maintenance-toggle-box">
-            <label class="switch-control">
+            <label class="switch-control" :aria-label="t('admin.maintenanceToggleLabel')">
               <input 
                 type="checkbox" 
                 v-model="formData.maintenanceMode" 
@@ -163,20 +175,20 @@ const handleSave = async () => {
             </label>
             <div class="switch-status-text">
               <span v-if="formData.maintenanceMode" class="status-badge active-maintenance">
-                <i class="fa-solid fa-circle-dot"></i> وضع الصيانة مفعّل (المتجر مغلق أمام العملاء)
+                <i class="fa-solid fa-circle-dot"></i> {{ t('admin.maintenanceToggleLabel') }}
               </span>
               <span v-else class="status-badge normal-mode">
-                <i class="fa-solid fa-circle-check"></i> المتجر متاح ويعمل بصورة طبيعية
+                <i class="fa-solid fa-circle-check"></i> {{ isRtl ? 'المتجر متاح ويعمل بصورة طبيعية' : 'Store is active and open to customers' }}
               </span>
             </div>
           </div>
 
           <div class="form-group mt-3" v-if="formData.maintenanceMode">
-            <label>رسالة الصيانة الموجهة للعملاء</label>
+            <label>{{ t('admin.maintenanceMessageLabel') }}</label>
             <textarea 
               v-model="formData.maintenanceMessage" 
               rows="3" 
-              placeholder="اكتب رسالة توضيحية لسبب التوقف وموعد العودة المتوقع..."
+              :placeholder="isRtl ? 'اكتب رسالة توضيحية لسبب التوقف وموعد العودة المتوقع...' : 'Enter maintenance notice message for visitors...'"
             ></textarea>
           </div>
         </div>
@@ -188,37 +200,37 @@ const handleSave = async () => {
               <i class="fa-solid fa-paint-roller"></i>
             </div>
             <div>
-              <h3>هوية المتجر والشعار (Store Branding)</h3>
-              <p>تحديد اسم المتجر باللغتين ونوع الشعار الظاهر في رأس الموقع والفوتر</p>
+              <h3>{{ t('admin.brandingTitle') }}</h3>
+              <p>{{ t('admin.brandingSub') }}</p>
             </div>
           </div>
 
           <div class="form-grid-2">
             <div class="form-group">
-              <label>اسم المتجر (بالعربية)</label>
+              <label>{{ t('admin.storeNameArLabel') }}</label>
               <input type="text" v-model="formData.storeNameAr" placeholder="متجري">
             </div>
 
             <div class="form-group">
-              <label>اسم المتجر (بالإنجليزية)</label>
+              <label>{{ t('admin.storeNameEnLabel') }}</label>
               <input type="text" v-model="formData.storeNameEn" placeholder="MyStore">
             </div>
           </div>
 
           <!-- Logo Type Selection -->
           <div class="form-group mt-3">
-            <label>نوع الشعار الظاهر</label>
+            <label>{{ t('admin.logoTypeLabel') }}</label>
             <div class="logo-type-selector">
               <label class="type-pill" :class="{ selected: formData.logoType === 'text' }">
                 <input type="radio" value="text" v-model="formData.logoType" />
                 <i class="fa-solid fa-font"></i>
-                <span>شعار نصي (Text Logo)</span>
+                <span>{{ t('admin.textLogoPill') }}</span>
               </label>
 
               <label class="type-pill" :class="{ selected: formData.logoType === 'image' }">
                 <input type="radio" value="image" v-model="formData.logoType" />
                 <i class="fa-solid fa-image"></i>
-                <span>شعار مصور (Image Logo)</span>
+                <span>{{ t('admin.imageLogoPill') }}</span>
               </label>
             </div>
           </div>
@@ -229,7 +241,7 @@ const handleSave = async () => {
               <img v-if="formData.logoUrl" :src="formData.logoUrl" alt="Logo Preview" class="current-logo-img" />
               <div v-else class="no-logo-placeholder">
                 <i class="fa-regular fa-image"></i>
-                <span>لم يتم رفع شعار مصور بعد</span>
+                <span>{{ t('admin.noLogoYet') }}</span>
               </div>
             </div>
 
@@ -242,9 +254,9 @@ const handleSave = async () => {
               >
                 <i v-if="isUploadingLogo" class="fa-solid fa-spinner fa-spin"></i>
                 <i v-else class="fa-solid fa-cloud-arrow-up"></i>
-                <span>{{ isUploadingLogo ? 'جاري الرفع...' : 'رفع شعار جديد' }}</span>
+                <span>{{ isUploadingLogo ? t('profile.uploadingPhoto') : t('admin.uploadNewLogoBtn') }}</span>
               </button>
-              <span class="upload-hint">PNG أو SVG مع خلفية شفافة، بحجم أقل من 2 ميجابايت.</span>
+              <span class="upload-hint">{{ t('admin.uploadLogoHint') }}</span>
               <input 
                 type="file" 
                 ref="logoFileInput" 
@@ -258,8 +270,8 @@ const handleSave = async () => {
           <!-- Favicon Uploader -->
           <div class="favicon-row mt-3">
             <div class="favicon-meta">
-              <label>أيقونة المتصفح (Favicon)</label>
-              <span class="upload-hint">تظهر بجانب عنوان الموقع في شريط تبويب المتصفح.</span>
+              <label>{{ t('admin.faviconLabel') }}</label>
+              <span class="upload-hint">{{ t('admin.faviconHint') }}</span>
             </div>
             
             <div class="favicon-controls">
@@ -272,7 +284,7 @@ const handleSave = async () => {
               >
                 <i v-if="isUploadingFavicon" class="fa-solid fa-spinner fa-spin"></i>
                 <i v-else class="fa-solid fa-upload"></i>
-                <span>تحديث الأيقونة</span>
+                <span>{{ t('admin.updateFaviconBtn') }}</span>
               </button>
               <input 
                 type="file" 
@@ -292,24 +304,24 @@ const handleSave = async () => {
               <i class="fa-solid fa-headset"></i>
             </div>
             <div>
-              <h3>بيانات التواصل وخدمة العملاء</h3>
-              <p>تظهر في صفحات المساعدة، الفوتر، وصفحة وضع الصيانة</p>
+              <h3>{{ t('admin.contactSettingsTitle') }}</h3>
+              <p>{{ t('admin.contactSettingsSub') }}</p>
             </div>
           </div>
 
           <div class="form-grid-3">
             <div class="form-group">
-              <label>رقم هاتف الدعم</label>
+              <label>{{ t('admin.hotlineLabel') }}</label>
               <input type="tel" v-model="formData.contactPhone" placeholder="+20 100 000 0000">
             </div>
 
             <div class="form-group">
-              <label>البريد الإلكتروني للدعم</label>
+              <label>{{ t('admin.supportEmailLabel') }}</label>
               <input type="email" v-model="formData.contactEmail" placeholder="support@mystore.com">
             </div>
 
             <div class="form-group">
-              <label>رقم الواتساب المباشر</label>
+              <label>{{ t('admin.whatsappLabel') }}</label>
               <input type="tel" v-model="formData.whatsappNumber" placeholder="+201000000000">
             </div>
           </div>
@@ -322,24 +334,24 @@ const handleSave = async () => {
               <i class="fa-solid fa-share-nodes"></i>
             </div>
             <div>
-              <h3>حسابات التواصل الاجتماعي</h3>
-              <p>الروابط المباشرة لصفحات المتجر على منصات التواصل</p>
+              <h3>{{ t('admin.socialMediaTitle') }}</h3>
+              <p>{{ t('admin.socialMediaSub') }}</p>
             </div>
           </div>
 
           <div class="form-grid-3">
             <div class="form-group">
-              <label><i class="fa-brands fa-facebook text-blue"></i> فيسبوك (Facebook)</label>
+              <label><i class="fa-brands fa-facebook text-blue"></i> Facebook</label>
               <input type="url" v-model="formData.socials.facebook" placeholder="https://facebook.com/yourstore">
             </div>
 
             <div class="form-group">
-              <label><i class="fa-brands fa-instagram text-pink"></i> انستغرام (Instagram)</label>
+              <label><i class="fa-brands fa-instagram text-pink"></i> Instagram</label>
               <input type="url" v-model="formData.socials.instagram" placeholder="https://instagram.com/yourstore">
             </div>
 
             <div class="form-group">
-              <label><i class="fa-brands fa-x-twitter"></i> إكس / تويتر (X)</label>
+              <label><i class="fa-brands fa-x-twitter"></i> X / Twitter</label>
               <input type="url" v-model="formData.socials.twitter" placeholder="https://x.com/yourstore">
             </div>
           </div>
@@ -357,7 +369,7 @@ const handleSave = async () => {
         >
           <i v-if="settingsStore.isSaving" class="fa-solid fa-circle-notch fa-spin"></i>
           <i v-else class="fa-solid fa-floppy-disk"></i>
-          <span>{{ settingsStore.isSaving ? 'جاري حفظ التعديلات...' : 'حفظ كافة إعدادات المتجر' }}</span>
+          <span>{{ settingsStore.isSaving ? t('admin.savingSettings') : t('admin.saveAllSettings') }}</span>
         </button>
       </div>
 
@@ -471,13 +483,15 @@ const handleSave = async () => {
   display: flex;
   align-items: center;
   gap: 16px;
+  flex-wrap: wrap;
 }
 
 .switch-control {
   position: relative;
   display: inline-block;
-  width: 54px;
-  height: 30px;
+  width: 56px;
+  height: 32px;
+  flex-shrink: 0;
 }
 
 .switch-control input {
@@ -498,9 +512,9 @@ const handleSave = async () => {
 .slider-round:before {
   position: absolute;
   content: "";
-  height: 22px;
-  width: 22px;
-  left: 4px;
+  height: 24px;
+  width: 24px;
+  inset-inline-start: 4px;
   bottom: 4px;
   background-color: white;
   transition: 0.3s;
@@ -514,6 +528,10 @@ input:checked + .slider-round {
 
 input:checked + .slider-round:before {
   transform: translateX(24px);
+}
+
+[dir="rtl"] input:checked + .slider-round:before {
+  transform: translateX(-24px);
 }
 
 .status-badge {
@@ -574,6 +592,7 @@ input:checked + .slider-round:before {
   background: #f8fafc;
   outline: none;
   box-sizing: border-box;
+  min-height: 44px;
   transition: all 0.2s;
 }
 
@@ -591,15 +610,17 @@ input:checked + .slider-round:before {
 .logo-type-selector {
   display: flex;
   gap: 12px;
+  flex-wrap: wrap;
 }
 
 .type-pill {
   flex: 1;
+  min-width: 160px;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  padding: 12px;
+  padding: 12px 16px;
   border: 1px solid #cbd5e1;
   border-radius: 12px;
   background: #f8fafc;
@@ -607,6 +628,7 @@ input:checked + .slider-round:before {
   font-weight: 700;
   color: #475569;
   cursor: pointer;
+  min-height: 44px;
   transition: all 0.2s;
 }
 
@@ -631,6 +653,7 @@ input:checked + .slider-round:before {
   display: flex;
   align-items: center;
   gap: 20px;
+  flex-wrap: wrap;
 }
 
 .logo-preview-area {
@@ -679,6 +702,7 @@ input:checked + .slider-round:before {
   font-size: 0.85rem;
   font-weight: 700;
   cursor: pointer;
+  min-height: 44px;
   transition: all 0.2s;
   width: fit-content;
 }
@@ -688,8 +712,9 @@ input:checked + .slider-round:before {
 }
 
 .upload-btn.sm {
-  padding: 6px 14px;
-  font-size: 0.8rem;
+  padding: 8px 16px;
+  font-size: 0.85rem;
+  min-height: 44px;
 }
 
 .upload-hint {
@@ -706,10 +731,12 @@ input:checked + .slider-round:before {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 14px 18px;
+  padding: 16px 20px;
   background: #f8fafc;
-  border-radius: 12px;
+  border-radius: 14px;
   border: 1px solid #e2e8f0;
+  flex-wrap: wrap;
+  gap: 14px;
 }
 
 .favicon-controls {
@@ -719,8 +746,8 @@ input:checked + .slider-round:before {
 }
 
 .favicon-preview {
-  width: 28px;
-  height: 28px;
+  width: 32px;
+  height: 32px;
   border-radius: 6px;
   border: 1px solid #cbd5e1;
 }
@@ -729,6 +756,7 @@ input:checked + .slider-round:before {
 .save-btn {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 10px;
   background: #059669;
   color: #ffffff;
@@ -738,6 +766,7 @@ input:checked + .slider-round:before {
   font-size: 0.95rem;
   font-weight: 700;
   cursor: pointer;
+  min-height: 44px;
   box-shadow: 0 4px 14px rgba(5, 150, 105, 0.25);
   transition: all 0.2s ease;
 }
@@ -757,7 +786,14 @@ input:checked + .slider-round:before {
   .form-grid-2 {
     grid-template-columns: 1fr;
   }
+  .settings-card {
+    padding: 20px;
+  }
   .logo-uploader-box {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .favicon-row {
     flex-direction: column;
     align-items: flex-start;
   }

@@ -2,71 +2,73 @@
   <AdminLayout>
     <div class="admin-container">
       <div class="header">
-        <h1>إدارة المستخدمين</h1>
-        <div class="stats">إجمالي المستخدمين: {{ totalUsersCount || usersList.length }}</div>
+        <h1>{{ t('admin.usersManage') }}</h1>
+        <div class="stats">
+          {{ t('admin.totalUsers') }}: {{ totalUsersCount || usersList.length }}
+        </div>
       </div>
 
       <div v-if="loading" class="loading-state">
-        <i class="fa-solid fa-spinner fa-spin"></i> جاري جلب المستخدمين...
+        <i class="fa-solid fa-spinner fa-spin"></i> {{ t('admin.loadingData') }}
       </div>
 
       <div v-else class="table-responsive">
         <table class="users-table">
           <thead>
             <tr>
-              <th>الاسم</th>
-              <th>البريد الإلكتروني</th>
-              <th>رقم الهاتف</th>
-              <th>تاريخ التسجيل</th>
-              <th>الصلاحية</th>
-              <th>الحالة</th>
-              <th>الإجراءات</th>
+              <th>{{ t('admin.customerName') }}</th>
+              <th>{{ t('auth.email') }}</th>
+              <th>{{ t('admin.customerPhone') }}</th>
+              <th>{{ t('admin.date') }}</th>
+              <th>{{ t('admin.role') }}</th>
+              <th>{{ t('admin.status') }}</th>
+              <th>{{ t('admin.actions') }}</th>
             </tr>
           </thead>
           <tbody>
             <tr v-for="user in usersList" :key="user.id" :class="{ 'banned-row': user.status === 'banned' }">
               <td>
                 <div class="user-info">
-                  <div class="avatar">{{ user.firstName?.charAt(0) || 'U' }}</div>
-                  <span>{{ user.name }}</span>
+                  <div class="avatar">{{ user.firstName?.charAt(0) || user.name?.charAt(0) || 'U' }}</div>
+                  <span class="user-name">{{ user.name || (user.firstName + ' ' + (user.lastName || '')) }}</span>
                 </div>
               </td>
               <td>{{ user.email }}</td>
-              <td dir="ltr">{{ user.phone || 'غير مسجل' }}</td>
+              <td dir="ltr" class="phone-cell">{{ user.phone || t('admin.unregisteredPhone') }}</td>
               <td>{{ formatDate(user.createdAt) }}</td>
               
-              <!-- الصلاحية (آدمن ولا عميل) -->
+              <!-- Role Badge -->
               <td>
                 <span :class="['role-badge', user.role === 'admin' ? 'admin' : 'customer']">
-                  {{ user.role === 'admin' ? 'مدير' : 'عميل' }}
+                  {{ user.role === 'admin' ? t('admin.adminRole') : t('admin.userRole') }}
                 </span>
               </td>
 
-              <!-- حالة الحساب (نشط ولا محظور) -->
+              <!-- Status Badge -->
               <td>
                 <span :class="['status-badge', user.status === 'banned' ? 'banned' : 'active']">
-                  {{ user.status === 'banned' ? 'محظور' : 'نشط' }}
+                  {{ user.status === 'banned' ? t('admin.banned') : t('admin.active') }}
                 </span>
               </td>
 
-              <!-- أزرار التحكم -->
+              <!-- Control Actions -->
               <td class="actions">
-                <!-- زرار تغيير الصلاحية (مبيظهرش لو هو نفس الآدمن اللي فاتح عشان ميشيلش نفسه) -->
                 <button 
                   v-if="user.id !== auth.currentUser?.uid"
                   @click="toggleRole(user)" 
                   class="action-btn toggle-role"
-                  :title="user.role === 'admin' ? 'تحويل لعميل' : 'ترقية لمدير'"
+                  :title="user.role === 'admin' ? t('admin.convertToCustomer') : t('admin.promoteToAdmin')"
+                  :aria-label="user.role === 'admin' ? t('admin.convertToCustomer') : t('admin.promoteToAdmin')"
                 >
                   <i :class="user.role === 'admin' ? 'fa-solid fa-user-minus' : 'fa-solid fa-user-shield'"></i>
                 </button>
 
-                <!-- زرار الحظر -->
                 <button 
                   v-if="user.id !== auth.currentUser?.uid"
                   @click="toggleBan(user)" 
                   :class="['action-btn', user.status === 'banned' ? 'unban' : 'ban']"
-                  :title="user.status === 'banned' ? 'فك الحظر' : 'حظر الحساب'"
+                  :title="user.status === 'banned' ? t('admin.unbanAccount') : t('admin.banAccount')"
+                  :aria-label="user.status === 'banned' ? t('admin.unbanAccount') : t('admin.banAccount')"
                 >
                   <i :class="user.status === 'banned' ? 'fa-solid fa-unlock' : 'fa-solid fa-ban'"></i>
                 </button>
@@ -76,19 +78,20 @@
         </table>
       </div>
 
-      <!-- أزرار التنقل بين الصفحات السيرفرية -->
+      <!-- Pagination Controls -->
       <div class="pagination-controls" v-if="totalPages > 1 || hasMore || currentPage > 1">
         <button 
           class="pagination-btn" 
           :disabled="currentPage === 1 || loading" 
           @click="prevPage"
         >
-          <i class="fa-solid fa-chevron-right"></i> السابق
+          <i :class="isRtl ? 'fa-solid fa-chevron-right' : 'fa-solid fa-chevron-left'"></i>
+          {{ t('pagination.prev') }}
         </button>
 
         <span class="pagination-info">
-          الصفحة {{ currentPage }} من {{ totalPages }}
-          <span class="total-users-badge" v-if="totalUsersCount">({{ totalUsersCount }} مستخدم إجمالاً)</span>
+          {{ t('pagination.pageOf', { current: currentPage, total: totalPages }) }}
+          <span class="total-users-badge" v-if="totalUsersCount">({{ totalUsersCount }} {{ t('admin.usersCountSuffix') }})</span>
         </span>
 
         <button 
@@ -96,7 +99,8 @@
           :disabled="!hasMore || loading" 
           @click="nextPage"
         >
-          التالي <i class="fa-solid fa-chevron-left"></i>
+          {{ t('pagination.next') }}
+          <i :class="isRtl ? 'fa-solid fa-chevron-left' : 'fa-solid fa-chevron-right'"></i>
         </button>
       </div>
     </div>
@@ -105,10 +109,14 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { db, auth } from '../firebase/config'
 import { collection, getDocs, doc, updateDoc, orderBy, query, limit, startAfter, getCountFromServer } from 'firebase/firestore'
 import AdminLayout from '../components/AdminLayout.vue'
 import Swal from 'sweetalert2'
+
+const { t, locale } = useI18n()
+const isRtl = computed(() => locale.value === 'ar')
 
 const usersList = ref([])
 const loading = ref(true)
@@ -132,7 +140,6 @@ const fetchTotalCount = async () => {
   }
 }
 
-// جلب المستخدمين بـ Cursor Pagination
 const fetchUsers = async (targetPage = 1) => {
   loading.value = true
   try {
@@ -170,7 +177,7 @@ const fetchUsers = async (targetPage = 1) => {
     hasMore.value = querySnapshot.docs.length === pageSize
     currentPage.value = targetPage
   } catch (error) {
-    console.error("خطأ في جلب المستخدمين:", error)
+    console.error("Error fetching users:", error)
   } finally {
     loading.value = false
   }
@@ -192,28 +199,31 @@ onMounted(() => {
   fetchUsers()
 })
 
-// تنسيق التاريخ
 const formatDate = (val) => {
-  if (!val) return 'غير متوفر'
-  // التعامل مع كائنات Timestamp الخاصة بـ Firebase
+  if (!val) return '...'
   const date = val.toDate ? val.toDate() : new Date(val)
-  return date.toLocaleDateString('ar-EG')
+  return date.toLocaleDateString(locale.value === 'ar' ? 'ar-EG' : 'en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric'
+  })
 }
 
-// دالة الحظر / فك الحظر
 const toggleBan = async (user) => {
   const isBanned = user.status === 'banned'
-  const actionText = isBanned ? 'فك الحظر عن' : 'حظر'
+  const actionText = isBanned ? t('admin.unbanAccount') : t('admin.banAccount')
   
   const result = await Swal.fire({
-    title: `هل أنت متأكد؟`,
-    text: `هل تريد حقاً ${actionText} المستخدم ${user.name}؟`,
+    title: t('common.confirm'),
+    text: isBanned 
+      ? (isRtl.value ? `هل تريد حقاً فك الحظر عن ${user.name || 'المستخدم'}؟` : `Do you really want to unban ${user.name || 'this user'}?`)
+      : (isRtl.value ? `هل تريد حقاً حظر حساب ${user.name || 'المستخدم'}؟` : `Do you really want to ban ${user.name || 'this user'}?`),
     icon: 'warning',
     showCancelButton: true,
     confirmButtonColor: isBanned ? '#10b981' : '#ef4444',
     cancelButtonColor: '#94a3b8',
-    confirmButtonText: `نعم، ${actionText}`,
-    cancelButtonText: 'إلغاء'
+    confirmButtonText: actionText,
+    cancelButtonText: t('common.cancel')
   })
 
   if (result.isConfirmed) {
@@ -222,11 +232,11 @@ const toggleBan = async (user) => {
       const newStatus = isBanned ? 'active' : 'banned'
       
       await updateDoc(userRef, { status: newStatus })
-      user.status = newStatus // تحديث الواجهة فوراً
+      user.status = newStatus
 
       Swal.fire({
         icon: 'success',
-        title: 'تم التحديث',
+        title: t('common.success'),
         toast: true,
         position: 'top-end',
         showConfirmButton: false,
@@ -234,26 +244,27 @@ const toggleBan = async (user) => {
       })
     } catch (error) {
       console.error(error)
-      Swal.fire('خطأ!', 'لم يتم تحديث الحالة.', 'error')
+      Swal.fire(t('common.error'), error.message || 'Failed to update user status.', 'error')
     }
   }
 }
 
-// دالة تغيير الصلاحية
 const toggleRole = async (user) => {
   const isAdmin = user.role === 'admin'
   const newRole = isAdmin ? 'customer' : 'admin'
-  const roleText = isAdmin ? 'عميل عادي' : 'مدير'
+  const roleText = isAdmin ? t('admin.userRole') : t('admin.adminRole')
 
   const result = await Swal.fire({
-    title: 'تغيير الصلاحية',
-    text: `تحويل ${user.name} إلى ${roleText}؟`,
+    title: t('admin.role'),
+    text: isAdmin
+      ? (isRtl.value ? `تحويل ${user.name || 'المستخدم'} إلى ${roleText}؟` : `Demote ${user.name || 'this user'} to ${roleText}?`)
+      : (isRtl.value ? `ترقية ${user.name || 'المستخدم'} إلى ${roleText}؟` : `Promote ${user.name || 'this user'} to ${roleText}?`),
     icon: 'question',
     showCancelButton: true,
     confirmButtonColor: '#2563eb',
     cancelButtonColor: '#94a3b8',
-    confirmButtonText: 'نعم، تغيير',
-    cancelButtonText: 'إلغاء'
+    confirmButtonText: t('common.confirm'),
+    cancelButtonText: t('common.cancel')
   })
 
   if (result.isConfirmed) {
@@ -264,7 +275,7 @@ const toggleRole = async (user) => {
 
       Swal.fire({
         icon: 'success',
-        title: 'تم تغيير الصلاحية',
+        title: t('common.success'),
         toast: true,
         position: 'top-end',
         showConfirmButton: false,
@@ -272,6 +283,7 @@ const toggleRole = async (user) => {
       })
     } catch (error) {
       console.error(error)
+      Swal.fire(t('common.error'), error.message || 'Failed to update role.', 'error')
     }
   }
 }
@@ -281,63 +293,73 @@ const toggleRole = async (user) => {
 .admin-container {
   max-width: 1200px;
   margin: 0 auto;
-  padding: 30px 20px;
-  direction: rtl;
+  padding: 32px 20px;
 }
 
 .header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 30px;
+  margin-bottom: 28px;
+  flex-wrap: wrap;
+  gap: 16px;
 }
 
 .header h1 {
   color: #1e293b;
   margin: 0;
-  font-size: 1.8rem;
+  font-size: 1.75rem;
   font-weight: 800;
+  letter-spacing: -0.02em;
 }
 
 .stats {
-  background: #2563eb;
+  background: var(--primary-color, #2563eb);
   color: white;
-  padding: 8px 16px;
-  border-radius: 20px;
+  padding: 8px 18px;
+  border-radius: 9999px;
   font-weight: 700;
-  font-size: 0.95rem;
+  font-size: 0.9rem;
 }
 
 .loading-state {
   text-align: center;
-  padding: 60px;
-  font-size: 1.2rem;
+  padding: 60px 20px;
+  font-size: 1.15rem;
   color: #64748b;
+  background: white;
+  border-radius: 16px;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.03);
 }
 
 .table-responsive {
   background: white;
   border-radius: 16px;
   box-shadow: 0 10px 30px rgba(0,0,0,0.04);
+  border: 1px solid rgba(0,0,0,0.05);
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .users-table {
   width: 100%;
   border-collapse: collapse;
   white-space: nowrap;
+  min-width: 750px;
 }
 
 .users-table th, .users-table td {
-  padding: 18px 20px;
-  text-align: right;
+  padding: 16px 20px;
+  text-align: start;
   border-bottom: 1px solid #f1f5f9;
+  vertical-align: middle;
 }
 
 .users-table th {
   background-color: #f8fafc;
   color: #64748b;
   font-weight: 700;
+  font-size: 0.875rem;
 }
 
 .user-info {
@@ -348,9 +370,14 @@ const toggleRole = async (user) => {
   color: #1e293b;
 }
 
+.user-name {
+  font-weight: 600;
+  color: #1e293b;
+}
+
 .avatar {
-  width: 35px;
-  height: 35px;
+  width: 38px;
+  height: 38px;
   background: #e0e7ff;
   color: #3730a3;
   border-radius: 50%;
@@ -358,46 +385,56 @@ const toggleRole = async (user) => {
   align-items: center;
   justify-content: center;
   font-size: 1rem;
+  font-weight: 700;
+  flex-shrink: 0;
 }
 
 .role-badge, .status-badge {
-  padding: 6px 12px;
-  border-radius: 20px;
-  font-size: 0.85rem;
+  padding: 5px 12px;
+  border-radius: 9999px;
+  font-size: 0.8rem;
   font-weight: 700;
+  display: inline-block;
 }
 
 .role-badge.admin { background: #fef3c7; color: #d97706; }
 .role-badge.customer { background: #f1f5f9; color: #64748b; }
 
 .status-badge.active { background: #dcfce7; color: #16a34a; }
-.status-badge.banned { background: #fee2e2; color: #ef4444; }
+.status-badge.banned { background: #fee2e2; color: #dc2626; }
 
 .banned-row td {
-  opacity: 0.7;
+  opacity: 0.75;
   background-color: #fffafb;
+}
+
+.phone-cell {
+  color: #475569;
 }
 
 .actions {
   display: flex;
   gap: 10px;
+  align-items: center;
 }
 
 .action-btn {
-  width: 35px;
-  height: 35px;
+  width: 44px;
+  height: 44px;
   border: none;
-  border-radius: 8px;
+  border-radius: 10px;
   cursor: pointer;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 1rem;
+  font-size: 1.05rem;
   transition: all 0.2s;
+  min-height: 44px;
+  min-width: 44px;
 }
 
 .toggle-role { background: #f1f5f9; color: #3b82f6; }
-.toggle-role:hover { background: #e0e7ff; }
+.toggle-role:hover { background: #dbeafe; }
 
 .ban { background: #fee2e2; color: #ef4444; }
 .ban:hover { background: #fecaca; }
@@ -409,16 +446,17 @@ const toggleRole = async (user) => {
   display: flex;
   justify-content: center;
   align-items: center;
-  gap: 15px;
-  margin-top: 25px;
+  gap: 16px;
+  margin-top: 28px;
   padding: 10px 0;
+  flex-wrap: wrap;
 }
 
 .pagination-btn {
-  padding: 8px 18px;
+  padding: 8px 20px;
   background-color: white;
   border: 1px solid #cbd5e1;
-  border-radius: 8px;
+  border-radius: 10px;
   font-family: inherit;
   font-size: 0.9rem;
   font-weight: 700;
@@ -427,6 +465,7 @@ const toggleRole = async (user) => {
   display: flex;
   align-items: center;
   gap: 8px;
+  min-height: 44px;
   transition: all 0.2s;
 }
 

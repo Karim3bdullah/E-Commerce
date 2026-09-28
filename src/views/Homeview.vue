@@ -22,11 +22,13 @@
         </div>
       </template>
 
+      <!-- Empty State -->
       <div v-else-if="displayedProducts.length === 0" class="empty-state">
         <i class="fa-solid fa-box-open empty-icon"></i>
-        <p>لا توجد منتجات مطابقة للبحث أو القسم المختار.</p>
+        <p>{{ t('home.noProducts') }}</p>
       </div>
 
+      <!-- Real Products List -->
       <template v-else>
         <ProductCard 
           v-for="product in paginatedProducts" 
@@ -36,23 +38,34 @@
       </template>
     </div>
     
+    <!-- Responsive Pagination Controls -->
     <div class="pagination-nav" v-if="productStore.totalPages > 1 || productStore.hasMore || productStore.currentPage > 1">
       <button 
+        type="button"
         class="page-btn" 
         :disabled="productStore.currentPage === 1 || productStore.isloading"
         @click="changePage(productStore.currentPage - 1)"
-      >السابق</button>
+      >
+        <i :class="isRtl ? 'fa-solid fa-chevron-right' : 'fa-solid fa-chevron-left'"></i>
+        <span>{{ t('pagination.prev') }}</span>
+      </button>
 
       <span class="pagination-info">
-        الصفحة {{ productStore.currentPage }} من {{ productStore.totalPages }}
-        <span class="total-items-badge" v-if="productStore.totalProductsCount">({{ productStore.totalProductsCount }} منتج إجمالاً)</span>
+        {{ t('pagination.pageOf', { current: productStore.currentPage, total: productStore.totalPages }) }}
+        <span class="total-items-badge" v-if="productStore.totalProductsCount">
+          {{ t('pagination.totalItemsBadge', { count: productStore.totalProductsCount }) }}
+        </span>
       </span>
 
       <button 
+        type="button"
         class="page-btn" 
         :disabled="!productStore.hasMore || productStore.isloading"
         @click="changePage(productStore.currentPage + 1)"
-      >التالي</button>
+      >
+        <span>{{ t('pagination.next') }}</span>
+        <i :class="isRtl ? 'fa-solid fa-chevron-left' : 'fa-solid fa-chevron-right'"></i>
+      </button>
     </div>
 
   </div>
@@ -65,7 +78,8 @@ import ProductCard from '../components/ProductCard.vue'
 import SharedFilter from '../components/SharedFilter.vue'
 import { useI18n } from 'vue-i18n'
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
+const isRtl = computed(() => locale.value === 'ar')
 
 const productStore = useProductStore()
 const selectedCategory = ref('')
@@ -131,28 +145,30 @@ onMounted(() => {
 
 <style scoped>
 .home-container {
-  max-width: 1300px;
-  margin: 40px auto;
-  padding: 0 20px;
+  max-width: 1360px;
+  margin: 32px auto;
+  padding: 0 24px;
+  width: 100%;
 }
 
 .filters-section {
-  margin-bottom: 30px;
+  margin-bottom: 28px;
 }
 
+/* Standardized responsive grid: 4 cols on desktop (>1024px) */
 .products-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 25px;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 24px;
+  width: 100%;
 }
 
 /* Skeletons */
 .product-card-skeleton {
-  background: #ffffff;
+  background: white;
   border-radius: 16px;
-  border: 1px solid rgba(226, 232, 240, 0.8);
+  border: 1px solid #e2e8f0;
   overflow: hidden;
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.02);
   display: flex;
   flex-direction: column;
 }
@@ -163,105 +179,118 @@ onMounted(() => {
 }
 
 .skeleton-card-body {
-  padding: 20px;
+  padding: 16px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
 }
 
 .skeleton-rate {
-  width: 90px;
+  width: 80px;
   height: 16px;
   border-radius: 4px;
 }
 
 .skeleton-title-row {
   width: 100%;
-  height: 18px;
+  height: 16px;
   border-radius: 4px;
 }
 
 .skeleton-title-row.short {
-  width: 65%;
+  width: 60%;
 }
 
 .skeleton-card-footer {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  margin-top: 10px;
   padding-top: 10px;
-  margin-top: 4px;
   border-top: 1px solid #f1f5f9;
 }
 
 .skeleton-price-tag {
-  width: 70px;
+  width: 60px;
   height: 24px;
-  border-radius: 6px;
+  border-radius: 4px;
 }
 
 .skeleton-cart-btn {
   width: 80px;
-  height: 36px;
-  border-radius: 8px;
+  height: 38px;
+  border-radius: 10px;
 }
 
 .empty-state {
   grid-column: 1 / -1;
   text-align: center;
-  padding: 80px 20px;
-  color: #64748b;
-  font-size: 1.2rem;
-  background: #f8fafc;
+  padding: 60px 20px;
+  background: white;
   border-radius: 16px;
+  border: 1px dashed #cbd5e1;
+  color: #64748b;
 }
 
 .empty-icon {
-  font-size: 4rem;
-  margin-bottom: 15px;
+  font-size: 3rem;
   color: #cbd5e1;
+  margin-bottom: 16px;
+  display: block;
 }
+
+.empty-state p {
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+/* Pagination */
 .pagination-nav {
   display: flex;
   justify-content: center;
   align-items: center;
-  gap: 8px;
-  margin-top: 40px;
-  padding-bottom: 20px;
+  gap: 16px;
+  margin-top: 48px;
+  padding: 16px 0;
 }
 
 .page-btn {
-  padding: 8px 16px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  min-height: 44px;
+  background-color: white;
   border: 1px solid #cbd5e1;
-  background-color: #ffffff;
-  color: #334155;
+  border-radius: 12px;
+  color: #1e293b;
   font-weight: 700;
-  border-radius: 8px;
+  font-size: 0.95rem;
   cursor: pointer;
   transition: all 0.2s ease;
   font-family: inherit;
 }
 
 .page-btn:hover:not(:disabled) {
-  background-color: #f1f5f9;
-  border-color: #94a3b8;
-}
-
-.page-btn.active {
-  background-color: #2563eb;
+  background-color: #059669;
   color: white;
-  border-color: #2563eb;
+  border-color: #059669;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(5, 150, 105, 0.2);
 }
 
 .page-btn:disabled {
-  opacity: 0.5;
+  opacity: 0.45;
   cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
 }
 
 .pagination-info {
   font-size: 0.95rem;
   font-weight: 700;
-  color: #475569;
+  color: #334155;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -271,5 +300,50 @@ onMounted(() => {
   font-size: 0.85rem;
   color: #64748b;
   font-weight: 500;
+}
+
+/* Tablet (768px - 1024px): 3 columns */
+@media (max-width: 1024px) {
+  .products-grid {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 20px;
+  }
+}
+
+/* Tablet Small (640px - 768px): 2 columns */
+@media (max-width: 768px) {
+  .home-container {
+    margin: 20px auto;
+    padding: 0 16px;
+  }
+
+  .products-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 16px;
+  }
+
+  .pagination-nav {
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  .pagination-info {
+    order: -1;
+    width: 100%;
+    justify-content: center;
+  }
+
+  .page-btn {
+    flex: 1;
+    justify-content: center;
+  }
+}
+
+/* Mobile (< 400px): 1 column clean flow */
+@media (max-width: 400px) {
+  .products-grid {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
 }
 </style>

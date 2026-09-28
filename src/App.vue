@@ -8,22 +8,34 @@ const route = useRoute()
 </script>
 
 <template>
-  <Navbar v-if="!route.meta.requiresAdmin && !route.meta.hideNavFooter" />
-  
-  <RouterView />
-  
-  <Footer v-if="!route.meta.hideNavFooter" />
+  <div class="app-root">
+    <Navbar v-if="!route.meta.requiresAdmin && !route.meta.hideNavFooter" />
+    
+    <main class="app-main-content">
+      <RouterView />
+    </main>
+    
+    <Footer v-if="!route.meta.hideNavFooter" />
 
-  <MiniCartDrawer />
+    <MiniCartDrawer />
+  </div>
 </template>
 
 <style>
-* {
-  text-decoration: none;
+.app-root {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 100vw;
+  overflow-x: clip;
 }
-body {
-  margin: 0;
-  font-family: 'Cairo', sans-serif; 
-  background-color: #f8fafc;
+
+.app-main-content {
+  flex: 1;
+  width: 100%;
+  max-width: 100vw;
+  min-width: 0;
+  overflow-x: clip;
 }
 </style>

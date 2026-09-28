@@ -75,11 +75,10 @@ export const useSettingsStore = defineStore('settingsStore', () => {
         }
         isLoaded.value = true
       }, (err) => {
-        console.warn("Settings realtime sync fallback:", err)
+        // Fallback to local default settings gracefully
         isLoaded.value = true
       })
     } catch (e) {
-      console.warn("Could not setup settings listener:", e)
       isLoaded.value = true
     }
   }

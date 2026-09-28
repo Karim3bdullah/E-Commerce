@@ -5,14 +5,14 @@
       <div class="card-header">
         <div class="icon-box"><i class="fa-solid fa-user-gear"></i></div>
         <div>
-          <h2>الملف الشخصي وإعدادات الحساب</h2>
-          <p class="header-subtitle">قم بتخصيص صورتك الرمزية ومعلومات التوصيل الخاصة بك</p>
+          <h2>{{ t('profile.title') }}</h2>
+          <p class="header-subtitle">{{ t('profile.subtitle') }}</p>
         </div>
       </div>
 
       <div v-if="pageLoading" class="loading-state">
         <div class="spinner"></div>
-        <p>جاري جلب بياناتك...</p>
+        <p>{{ t('profile.fetchingData') }}</p>
       </div>
 
       <div v-else class="profile-content">
@@ -27,20 +27,20 @@
             <div class="avatar-overlay">
               <i v-if="isUploadingPhoto" class="fa-solid fa-circle-notch fa-spin"></i>
               <i v-else class="fa-solid fa-camera"></i>
-              <span>تغيير الصورة</span>
+              <span>{{ t('profile.changeAvatar') }}</span>
             </div>
           </div>
 
           <div class="avatar-info-meta">
-            <h4>الصورة الشخصية</h4>
-            <p>صيغة JPG أو PNG بحجم أقصاه 2 ميجابايت. تظهر صورتك في المراجعات ورأس الموقع.</p>
+            <h4>{{ t('profile.avatarSectionTitle') }}</h4>
+            <p>{{ t('profile.avatarHint') }}</p>
             <div class="avatar-actions-row">
               <button type="button" class="upload-badge-btn" @click="triggerFileInput" :disabled="isUploadingPhoto">
                 <i class="fa-solid fa-arrow-up-from-bracket"></i>
-                {{ isUploadingPhoto ? 'جاري الرفع...' : 'رفع صورة جديدة' }}
+                <span>{{ isUploadingPhoto ? t('profile.uploadingPhoto') : t('profile.uploadNewPhoto') }}</span>
               </button>
               <button v-if="formData.photoURL || photoPreview" type="button" class="remove-photo-btn" @click="removeAvatar" :disabled="isUploadingPhoto">
-                حذف الصورة
+                {{ t('profile.removePhoto') }}
               </button>
             </div>
           </div>
@@ -57,38 +57,38 @@
         <form @submit.prevent="updateUserProfile" class="profile-form">
           <div class="form-row">
             <div class="form-group">
-              <label>الاسم الأول</label>
-              <input type="text" v-model="formData.firstName" required placeholder="أحمد">
+              <label>{{ t('profile.firstName') }}</label>
+              <input type="text" v-model="formData.firstName" required placeholder="Ahmed">
             </div>
             <div class="form-group">
-              <label>اسم العائلة</label>
-              <input type="text" v-model="formData.lastName" required placeholder="محمد">
+              <label>{{ t('profile.lastName') }}</label>
+              <input type="text" v-model="formData.lastName" required placeholder="Mohamed">
             </div>
           </div>
 
           <div class="form-group">
-            <label>البريد الإلكتروني (غير قابل للتعديل)</label>
+            <label>{{ t('profile.uneditableEmail') }}</label>
             <input type="email" :value="currentUserEmail" disabled class="disabled-input">
           </div>
 
           <div class="form-group">
-            <label>رقم الهاتف</label>
+            <label>{{ t('profile.phone') }}</label>
             <input type="tel" v-model="formData.phone" placeholder="01XXXXXXXXX" required>
           </div>
 
           <div class="form-group">
-            <label>عنوان الشحن الافتراضي</label>
+            <label>{{ t('profile.defaultAddress') }}</label>
             <textarea 
               v-model="formData.address" 
               rows="3" 
-              placeholder="المحافظة - المدينة - الشارع - رقم المبنى (لتسهيل الطلب لاحقاً)"
+              :placeholder="t('profile.addressPlaceholder')"
             ></textarea>
           </div>
 
           <div class="form-actions">
             <button type="submit" class="save-btn" :disabled="isSubmitting || isUploadingPhoto">
-              <span v-if="isSubmitting"><i class="fa-solid fa-spinner fa-spin"></i> جاري الحفظ...</span>
-              <span v-else><i class="fa-solid fa-floppy-disk"></i> حفظ التعديلات</span>
+              <span v-if="isSubmitting"><i class="fa-solid fa-spinner fa-spin"></i> {{ t('profile.saving') }}</span>
+              <span v-else><i class="fa-solid fa-floppy-disk"></i> {{ t('profile.saveChanges') }}</span>
             </button>
           </div>
         </form>
@@ -99,21 +99,28 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { auth, db, storage } from '../firebase/config'
+import { onAuthStateChanged, updateProfile } from 'firebase/auth'
 import { doc, getDoc, updateDoc } from 'firebase/firestore'
-import { updateProfile as updateAuthProfile } from 'firebase/auth'
-import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage'
+import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage'
+import { useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
+import { notifySuccess, notifyError } from '../services/feedback'
 import Swal from 'sweetalert2'
+
+const router = useRouter()
+const { t, locale } = useI18n()
 
 const pageLoading = ref(true)
 const isSubmitting = ref(false)
 const isUploadingPhoto = ref(false)
 const fileInputRef = ref(null)
-const photoPreview = ref(null)
-const selectedFile = ref(null)
 
-const currentUserEmail = computed(() => auth.currentUser?.email || '')
+const currentUserEmail = ref('')
+const currentUserId = ref(null)
+const photoPreview = ref(null)
+const selectedPhotoFile = ref(null)
 
 const formData = ref({
   firstName: '',
@@ -130,186 +137,217 @@ const userInitials = computed(() => {
   return 'US'
 })
 
+onMounted(() => {
+  onAuthStateChanged(auth, async (user) => {
+    if (!user) {
+      router.push('/login')
+      return
+    }
+
+    currentUserId.value = user.uid
+    currentUserEmail.value = user.email
+
+    try {
+      const userDoc = await getDoc(doc(db, 'users', user.uid))
+      if (userDoc.exists()) {
+        const data = userDoc.data()
+        formData.value = {
+          firstName: data.firstName || '',
+          lastName: data.lastName || '',
+          phone: data.phone || '',
+          address: data.address || '',
+          photoURL: data.photoURL || user.photoURL || ''
+        }
+      } else {
+        const displayNameParts = (user.displayName || '').split(' ')
+        formData.value.firstName = displayNameParts[0] || ''
+        formData.value.lastName = displayNameParts.slice(1).join(' ') || ''
+        formData.value.photoURL = user.photoURL || ''
+      }
+    } catch (err) {
+      console.error("Error loading user profile:", err)
+    } finally {
+      pageLoading.value = false
+    }
+  })
+})
+
 const triggerFileInput = () => {
-  if (fileInputRef.value) {
+  if (!isUploadingPhoto.value && fileInputRef.value) {
     fileInputRef.value.click()
   }
+}
+
+// Helper to downscale avatar image for database fallback when CORS/Storage is unavailable
+function compressAvatar(file, maxWidth = 120, maxHeight = 120, quality = 0.75) {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      img.src = e.target.result
+    }
+    reader.onerror = reject
+    img.onload = () => {
+      let width = img.width
+      let height = img.height
+
+      if (width > height) {
+        if (width > maxWidth) {
+          height = Math.round((height * maxWidth) / width)
+          width = maxWidth
+        }
+      } else {
+        if (height > maxHeight) {
+          width = Math.round((width * maxHeight) / height)
+          height = maxHeight
+        }
+      }
+
+      const canvas = document.createElement('canvas')
+      canvas.width = width
+      canvas.height = height
+      const ctx = canvas.getContext('2d')
+      ctx.drawImage(img, 0, 0, width, height)
+      resolve(canvas.toDataURL('image/jpeg', quality))
+    }
+    img.onerror = reject
+    reader.readAsDataURL(file)
+  })
 }
 
 const handleAvatarSelected = async (event) => {
   const file = event.target.files?.[0]
   if (!file) return
 
-  // Validate type
-  if (!file.type.startsWith('image/')) {
-    Swal.fire({
-      icon: 'warning',
-      title: 'صيغة غير مدعومة',
-      text: 'يرجى اختيار ملف صورة صالح (JPG, PNG, WebP).'
-    })
+  if (file.size > 2 * 1024 * 1024) {
+    notifyError(t('common.error'), t('profile.avatarHint'))
+    if (event.target) event.target.value = ''
     return
   }
 
-  // Validate size (< 2MB)
-  const maxSize = 2 * 1024 * 1024
-  if (file.size > maxSize) {
-    Swal.fire({
-      icon: 'error',
-      title: 'حجم الصورة كبير جداً',
-      text: 'عفواً، الحد الأقصى لحجم الصورة هو 2 ميجابايت.'
-    })
-    return
-  }
-
-  selectedFile.value = file
+  const previousPhotoURL = formData.value.photoURL
+  selectedPhotoFile.value = file
   photoPreview.value = URL.createObjectURL(file)
 
-  // Direct background upload to Firebase Storage
-  await uploadAvatarFile(file)
-}
-
-const uploadAvatarFile = async (file) => {
   if (!auth.currentUser) return
   isUploadingPhoto.value = true
 
   try {
+    // 1. Upload binary file directly to Firebase Storage with proper metadata
     const fileExt = file.name.split('.').pop() || 'jpg'
-    const userAvatarRef = storageRef(storage, `users/${auth.currentUser.uid}/avatar.${fileExt}`)
-    
-    await uploadBytes(userAvatarRef, file, { contentType: file.type })
-    const downloadURL = await getDownloadURL(userAvatarRef)
+    const avatarRef = storageRef(storage, `users/${auth.currentUser.uid}/avatar.${fileExt}`)
+    const metadata = {
+      contentType: file.type || 'image/jpeg',
+      customMetadata: { userId: auth.currentUser.uid }
+    }
+    await uploadBytes(avatarRef, file, metadata)
 
-    // Update Firebase Auth current user photoURL
-    await updateAuthProfile(auth.currentUser, {
+    // 2. Obtain clean HTTPS URL
+    const downloadURL = await getDownloadURL(avatarRef)
+
+    // 3. Update Auth and Firestore user doc
+    await updateProfile(auth.currentUser, {
       photoURL: downloadURL
     })
 
-    // Update Firestore User document
-    const userDocRef = doc(db, 'users', auth.currentUser.uid)
-    await updateDoc(userDocRef, {
+    await updateDoc(doc(db, 'users', currentUserId.value || auth.currentUser.uid), {
       photoURL: downloadURL
     })
 
     formData.value.photoURL = downloadURL
-    photoPreview.value = null
-
-    const Toast = Swal.mixin({
-      toast: true,
-      position: 'top-end',
-      showConfirmButton: false,
-      timer: 2000,
-      timerProgressBar: true
-    })
-    Toast.fire({
-      icon: 'success',
-      title: 'تم تحديث الصورة الشخصية بنجاح ✨'
-    })
+    photoPreview.value = downloadURL
+    notifySuccess(t('profile.updateSuccess'))
   } catch (err) {
-    console.error("Storage upload error:", err)
-    // Fallback: If storage bucket has cors or strict permissions, store as high quality data URL
+    console.warn("Storage uploadBytes failed (CORS/Network policy), attempting resilient Firestore thumbnail fallback:", err?.message || err)
+
     try {
-      const reader = new FileReader()
-      reader.onload = async (e) => {
-        const dataUrl = e.target.result
-        formData.value.photoURL = dataUrl
-        const userDocRef = doc(db, 'users', auth.currentUser.uid)
-        await updateDoc(userDocRef, { photoURL: dataUrl })
-        await updateAuthProfile(auth.currentUser, { photoURL: dataUrl })
-      }
-      reader.readAsDataURL(file)
+      // Automated Fallback: Compress to lightweight thumbnail and store directly in user document
+      const compressedThumb = await compressAvatar(file, 120, 120, 0.75)
+      
+      await updateDoc(doc(db, 'users', currentUserId.value || auth.currentUser.uid), {
+        photoURL: compressedThumb
+      })
+
+      formData.value.photoURL = compressedThumb
+      photoPreview.value = compressedThumb
+
+      notifySuccess(
+        locale.value === 'ar' ? 'تم حفظ الصورة الشخصية بنجاح!' : 'Profile photo updated successfully!',
+        locale.value === 'ar'
+          ? 'تم الحفظ محلياً عبر قاعدة البيانات لتجاوز قيود CORS للمتصفح.'
+          : 'Saved directly to profile to bypass browser CORS policy.'
+      )
     } catch (fallbackErr) {
-      console.warn("Fallback avatar failed:", fallbackErr)
+      console.error("Avatar fallback error:", fallbackErr)
+      notifyError(
+        t('common.error'),
+        locale.value === 'ar'
+          ? 'تعذر رفع الصورة بسبب قيود CORS أو اتصال الشبكة. يرجى مراجعة إعدادات Firebase Storage.'
+          : 'Failed to upload photo due to Firebase Storage CORS or network restrictions.'
+      )
+      photoPreview.value = previousPhotoURL || null
     }
   } finally {
     isUploadingPhoto.value = false
+    selectedPhotoFile.value = null
+    if (event.target) event.target.value = ''
   }
 }
 
 const removeAvatar = async () => {
-  const result = await Swal.fire({
-    title: 'حذف الصورة الشخصية؟',
-    text: 'هل تريد حقاً استعادة الأحرف الأولى كصورة رمزية؟',
-    icon: 'question',
-    showCancelButton: true,
-    confirmButtonColor: '#ef4444',
-    confirmButtonText: 'نعم، حذف',
-    cancelButtonText: 'إلغاء'
-  })
+  formData.value.photoURL = ''
+  photoPreview.value = null
+  selectedPhotoFile.value = null
 
-  if (result.isConfirmed) {
-    formData.value.photoURL = ''
-    photoPreview.value = null
+  try {
     if (auth.currentUser) {
-      try {
-        await updateAuthProfile(auth.currentUser, { photoURL: '' })
-        const userDocRef = doc(db, 'users', auth.currentUser.uid)
-        await updateDoc(userDocRef, { photoURL: '' })
-      } catch (err) {
-        console.warn("Error clearing photoURL:", err)
-      }
+      await updateProfile(auth.currentUser, { photoURL: '' })
     }
+    await updateDoc(doc(db, 'users', currentUserId.value || auth.currentUser?.uid), {
+      photoURL: ''
+    })
+    notifySuccess(t('profile.updateSuccess'))
+  } catch (err) {
+    console.error("Failed to remove avatar:", err)
   }
 }
 
-onMounted(async () => {
-  auth.onAuthStateChanged(async (user) => {
-    if (user) {
-      try {
-        const docRef = doc(db, 'users', user.uid)
-        const docSnap = await getDoc(docRef)
-        
-        if (docSnap.exists()) {
-          const data = docSnap.data()
-          formData.value = {
-            firstName: data.firstName || '',
-            lastName: data.lastName || '',
-            phone: data.phone || '',
-            address: data.address || '',
-            photoURL: data.photoURL || user.photoURL || ''
-          }
-        } else {
-          formData.value.photoURL = user.photoURL || ''
-        }
-      } catch (error) {
-        console.error("خطأ في جلب البيانات:", error)
-      } finally {
-        pageLoading.value = false
-      }
-    }
-  })
-})
-
 const updateUserProfile = async () => {
-  if (!auth.currentUser) return
   isSubmitting.value = true
-  try {
-    const docRef = doc(db, 'users', auth.currentUser.uid)
-    const fullName = `${formData.value.firstName} ${formData.value.lastName}`.trim()
-    
-    await updateDoc(docRef, {
-      firstName: formData.value.firstName,
-      lastName: formData.value.lastName,
-      name: fullName,
-      phone: formData.value.phone,
-      address: formData.value.address,
-      photoURL: formData.value.photoURL
-    })
 
-    await updateAuthProfile(auth.currentUser, {
-      displayName: fullName,
-      photoURL: formData.value.photoURL
+  try {
+    const fullName = `${formData.value.firstName.trim()} ${formData.value.lastName.trim()}`
+    
+    if (auth.currentUser) {
+      await updateProfile(auth.currentUser, {
+        displayName: fullName
+      })
+    }
+
+    await updateDoc(doc(db, 'users', currentUserId.value), {
+      firstName: formData.value.firstName.trim(),
+      lastName: formData.value.lastName.trim(),
+      name: fullName,
+      phone: formData.value.phone.trim(),
+      address: formData.value.address.trim(),
+      photoURL: formData.value.photoURL || ''
     })
 
     Swal.fire({
       icon: 'success',
-      title: 'تم التحديث بنجاح!',
-      text: 'تم حفظ كافة بياناتك وملفك الشخصي.',
+      title: t('profile.updateSuccess'),
       timer: 2000,
       showConfirmButton: false
     })
-  } catch (error) {
-    console.error(error)
-    Swal.fire({ icon: 'error', title: 'خطأ', text: 'تعذر حفظ البيانات، حاول مجدداً.' })
+
+  } catch (err) {
+    console.error("Profile update error:", err)
+    Swal.fire({
+      icon: 'error',
+      title: t('common.error'),
+      text: err.message || '',
+      confirmButtonColor: '#ef4444'
+    })
   } finally {
     isSubmitting.value = false
   }
@@ -318,39 +356,40 @@ const updateUserProfile = async () => {
 
 <style scoped>
 .profile-page {
-  max-width: 800px;
-  margin: 50px auto 80px;
-  padding: 0 20px;
-  direction: rtl;
+  max-width: 900px;
+  margin: 36px auto;
+  padding: 0 24px;
+  width: 100%;
 }
 
 .profile-card {
-  background: white;
-  border-radius: 20px;
-  padding: 40px;
-  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.05);
-  border: 1px solid rgba(226, 232, 240, 0.8);
+  background: #ffffff;
+  border-radius: 24px;
+  padding: 36px;
+  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.04);
+  border: 1px solid rgba(226, 232, 240, 0.9);
 }
 
 .card-header {
   display: flex;
   align-items: center;
   gap: 16px;
-  margin-bottom: 30px;
+  margin-bottom: 32px;
   padding-bottom: 20px;
   border-bottom: 1px solid #f1f5f9;
 }
 
 .icon-box {
-  background: #ecfdf5;
-  color: #059669;
   width: 52px;
   height: 52px;
   border-radius: 14px;
+  background: #ecfdf5;
+  color: #059669;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.5rem;
+  font-size: 1.4rem;
+  flex-shrink: 0;
 }
 
 .card-header h2 {
@@ -373,9 +412,9 @@ const updateUserProfile = async () => {
   gap: 24px;
   padding: 24px;
   background: #f8fafc;
-  border-radius: 16px;
-  border: 1px solid rgba(226, 232, 240, 0.8);
-  margin-bottom: 28px;
+  border-radius: 18px;
+  border: 1px solid rgba(226, 232, 240, 0.85);
+  margin-bottom: 30px;
 }
 
 .avatar-preview-wrapper {
@@ -449,22 +488,26 @@ const updateUserProfile = async () => {
 
 .avatar-actions-row {
   display: flex;
-  gap: 10px;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
 .upload-badge-btn {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 16px;
   background: #059669;
-  color: #ffffff;
+  color: white;
   border: none;
-  border-radius: 8px;
-  font-size: 0.82rem;
+  padding: 8px 16px;
+  min-height: 44px;
+  border-radius: 10px;
+  font-size: 0.85rem;
   font-weight: 700;
   cursor: pointer;
-  transition: background 0.2s;
+  transition: all 0.2s ease;
+  font-family: inherit;
 }
 
 .upload-badge-btn:hover:not(:disabled) {
@@ -475,16 +518,18 @@ const updateUserProfile = async () => {
   background: transparent;
   color: #ef4444;
   border: 1px solid #fee2e2;
-  padding: 8px 14px;
-  border-radius: 8px;
-  font-size: 0.82rem;
+  padding: 8px 16px;
+  min-height: 44px;
+  border-radius: 10px;
+  font-size: 0.85rem;
   font-weight: 700;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.2s ease;
+  font-family: inherit;
 }
 
 .remove-photo-btn:hover {
-  background: #fef2f2;
+  background: #fee2e2;
 }
 
 .hidden-file-input {
@@ -503,51 +548,53 @@ const updateUserProfile = async () => {
   gap: 20px;
 }
 
-.form-row .form-group {
-  flex: 1;
-}
-
 .form-group {
+  flex: 1;
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
 
-.form-group label {
+label {
+  font-size: 0.9rem;
   font-weight: 700;
   color: #334155;
-  font-size: 0.9rem;
 }
 
-.form-group input, .form-group textarea {
-  width: 100%;
+input, textarea {
   padding: 12px 16px;
+  min-height: 48px;
   border: 1px solid #cbd5e1;
   border-radius: 12px;
   font-family: inherit;
   font-size: 0.95rem;
+  color: #0f172a;
   background: #f8fafc;
   outline: none;
-  transition: all 0.2s;
-  box-sizing: border-box;
+  transition: all 0.2s ease;
 }
 
-.form-group input:focus, .form-group textarea:focus {
+input:focus, textarea:focus {
   border-color: #059669;
-  background: white;
-  box-shadow: 0 0 0 3px rgba(5, 150, 105, 0.15);
+  background: #ffffff;
+  box-shadow: 0 0 0 3px rgba(5, 150, 105, 0.12);
 }
 
 .disabled-input {
-  background: #f1f5f9 !important;
-  color: #94a3b8 !important;
+  background: #f1f5f9;
+  color: #94a3b8;
   cursor: not-allowed;
 }
 
+textarea {
+  min-height: 100px;
+  resize: vertical;
+}
+
 .form-actions {
-  margin-top: 15px;
   display: flex;
   justify-content: flex-end;
+  margin-top: 10px;
 }
 
 .save-btn {
@@ -555,6 +602,7 @@ const updateUserProfile = async () => {
   color: white;
   border: none;
   padding: 14px 32px;
+  min-height: 48px;
   border-radius: 12px;
   font-weight: 700;
   font-size: 0.95rem;
@@ -564,6 +612,7 @@ const updateUserProfile = async () => {
   gap: 10px;
   box-shadow: 0 4px 14px rgba(5, 150, 105, 0.25);
   transition: all 0.2s ease;
+  font-family: inherit;
 }
 
 .save-btn:hover:not(:disabled) {
@@ -572,7 +621,7 @@ const updateUserProfile = async () => {
 }
 
 .save-btn:disabled {
-  opacity: 0.7;
+  opacity: 0.6;
   cursor: not-allowed;
 }
 
@@ -596,15 +645,31 @@ const updateUserProfile = async () => {
 
 @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 
-@media (max-width: 600px) {
+@media (max-width: 640px) {
+  .profile-page {
+    padding: 0 16px;
+  }
+
+  .profile-card {
+    padding: 24px 18px;
+  }
+
   .avatar-customizer-section {
     flex-direction: column;
     text-align: center;
   }
+
   .avatar-actions-row {
     justify-content: center;
   }
-  .form-row { flex-direction: column; }
-  .profile-card { padding: 25px; }
+
+  .form-row {
+    flex-direction: column;
+  }
+
+  .save-btn {
+    width: 100%;
+    justify-content: center;
+  }
 }
 </style>

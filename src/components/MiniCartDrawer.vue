@@ -1,14 +1,27 @@
 <script setup>
-import { computed } from 'vue'
+import { computed, watch, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useCartStore } from '../stores/cartStore'
 import { useI18n } from 'vue-i18n'
 
 const cartStore = useCartStore()
 const router = useRouter()
-const { locale } = useI18n()
+const { t, locale } = useI18n()
 
 const isRtl = computed(() => locale.value === 'ar')
+
+// Viewport & Body Scroll Locking
+watch(() => cartStore.isMiniCartOpen, (isOpen) => {
+  if (typeof document !== 'undefined') {
+    document.body.classList.toggle('drawer-open', isOpen)
+  }
+}, { immediate: true })
+
+onUnmounted(() => {
+  if (typeof document !== 'undefined') {
+    document.body.classList.remove('drawer-open')
+  }
+})
 
 const handleClose = () => {
   cartStore.closeMiniCart()
@@ -36,11 +49,12 @@ const continueShopping = () => {
       <div 
         v-if="cartStore.isMiniCartOpen" 
         class="mini-cart-overlay" 
+        :class="isRtl ? 'rtl-overlay' : 'ltr-overlay'"
         @click="handleClose"
       >
         <div 
           class="mini-cart-panel" 
-          :class="{ 'rtl-mode': isRtl }"
+          :class="isRtl ? 'rtl-mode' : 'ltr-mode'"
           @click.stop
         >
           <!-- Drawer Header -->
@@ -50,14 +64,14 @@ const continueShopping = () => {
                 <i class="fa-solid fa-bag-shopping"></i>
               </div>
               <div class="title-meta">
-                <h3>سلة المشتريات</h3>
-                <span class="items-count-tag">{{ cartStore.totalItemsCount }} منتجات</span>
+                <h3>{{ t('miniCart.title') }}</h3>
+                <span class="items-count-tag">{{ t('miniCart.itemsCount', { count: cartStore.totalItemsCount }) }}</span>
               </div>
             </div>
             <button 
               type="button" 
               class="close-btn" 
-              aria-label="Close cart" 
+              :aria-label="t('miniCart.closeCart')" 
               @click="handleClose"
             >
               <i class="fa-solid fa-xmark"></i>
@@ -70,12 +84,12 @@ const continueShopping = () => {
               <template v-if="cartStore.hasFreeShipping">
                 <span class="free-unlocked">
                   <i class="fa-solid fa-circle-check"></i>
-                  تهانينا! مؤهل للشحن المجاني السريع 🚀
+                  {{ t('miniCart.congratsFreeShipping') }}
                 </span>
               </template>
               <template v-else>
                 <span>
-                  أضف <strong>${{ cartStore.freeShippingRemaining.toFixed(2) }}</strong> أخرى للحصول على <strong>شحن مجاني</strong>!
+                  {{ t('miniCart.addMoreFor') }}<strong>${{ cartStore.freeShippingRemaining.toFixed(2) }}</strong>{{ t('miniCart.moreToGet') }}<strong>{{ t('miniCart.freeShippingTag') }}</strong>!
                 </span>
               </template>
             </div>
@@ -94,7 +108,7 @@ const continueShopping = () => {
               <div class="items-list">
                 <div 
                   v-for="item in cartStore.cart" 
-                  :key="item.id" 
+                  :key="item.cartItemId || item.id" 
                   class="cart-item-card"
                 >
                   <div class="item-img-wrapper">
@@ -106,14 +120,33 @@ const continueShopping = () => {
                       <button 
                         type="button" 
                         class="delete-item-btn" 
-                        title="إزالة من السلة"
-                        @click="cartStore.removeFromCart(item.id)"
+                        :title="t('cart.removeFromCart')"
+                        :aria-label="t('cart.removeFromCart')"
+                        @click="cartStore.removeFromCart(item.cartItemId || item.id)"
                       >
                         <i class="fa-regular fa-trash-can"></i>
                       </button>
                     </div>
+
+                    <!-- Selected Variants / Weight Chips -->
+                    <div v-if="item.selectedSize || item.selectedColor || item.unitType === 'weight'" class="item-variants-pills">
+                      <span v-if="item.unitType === 'weight'" class="variant-mini-chip weight-mini-chip">
+                        <i class="fa-solid fa-weight-scale"></i> {{ item.quantity }} {{ t('variants.kg') }}
+                      </span>
+                      <span v-if="item.selectedSize" class="variant-mini-chip">
+                        <i class="fa-solid fa-ruler-horizontal"></i> {{ item.selectedSize }}
+                      </span>
+                      <span v-if="item.selectedColor" class="variant-mini-chip color-mini-chip">
+                        <span class="color-mini-dot" :style="{ backgroundColor: item.selectedColor?.hex || item.selectedColor }"></span>
+                        {{ item.selectedColor?.name || item.selectedColor }}
+                      </span>
+                    </div>
+
                     <div class="item-price-row">
-                      <span class="unit-price">${{ Number(item.price).toFixed(2) }}</span>
+                      <span class="unit-price">
+                        ${{ Number(item.price).toFixed(2) }} 
+                        <span v-if="item.unitType === 'weight'">{{ t('variants.perKg') }}</span>
+                      </span>
                       <span class="line-total">${{ (item.price * item.quantity).toFixed(2) }}</span>
                     </div>
                     <div class="item-controls">
@@ -121,22 +154,26 @@ const continueShopping = () => {
                         <button 
                           type="button" 
                           class="stepper-btn" 
-                          @click="cartStore.decreaseQuantity(item.id)"
+                          :aria-label="t('miniCart.decreaseQty')"
+                          @click="cartStore.decreaseQuantity(item.cartItemId || item.id)"
                         >
                           <i class="fa-solid fa-minus"></i>
                         </button>
-                        <span class="qty-value">{{ item.quantity }}</span>
+                        <span class="qty-value">
+                          {{ item.unitType === 'weight' ? `${item.quantity} ${t('variants.kg')}` : item.quantity }}
+                        </span>
                         <button 
                           type="button" 
                           class="stepper-btn" 
-                          :disabled="item.quantity >= item.stock"
-                          @click="cartStore.increaseQuantity(item.id)"
+                          :disabled="item.unitType !== 'weight' && item.quantity >= item.stock"
+                          :aria-label="t('miniCart.increaseQty')"
+                          @click="cartStore.increaseQuantity(item.cartItemId || item.id)"
                         >
                           <i class="fa-solid fa-plus"></i>
                         </button>
                       </div>
-                      <span v-if="item.stock <= 5" class="stock-badge-low">
-                        متبقي {{ item.stock }} فقط!
+                      <span v-if="item.stock <= 5 && item.unitType !== 'weight'" class="stock-badge-low">
+                        {{ t('miniCart.onlyLeft', { count: item.stock }) }}
                       </span>
                     </div>
                   </div>
@@ -149,11 +186,11 @@ const continueShopping = () => {
               <div class="empty-icon-wrap">
                 <i class="fa-solid fa-basket-shopping"></i>
               </div>
-              <h4>السلة فارغة حالياً</h4>
-              <p>استكشف أحدث المنتجات والعروض الحصرية وأضف ما يعجبك!</p>
+              <h4>{{ t('miniCart.emptyTitle') }}</h4>
+              <p>{{ t('miniCart.emptyDesc') }}</p>
               <button type="button" class="explore-btn" @click="continueShopping">
                 <i class="fa-solid fa-bag-shopping"></i>
-                تصفح المنتجات الآن
+                <span>{{ t('miniCart.browseNow') }}</span>
               </button>
             </div>
           </div>
@@ -162,17 +199,17 @@ const continueShopping = () => {
           <div v-if="cartStore.cart.length > 0" class="panel-footer">
             <div class="summary-breakdown">
               <div class="summary-line">
-                <span class="label">المجموع الفرعي:</span>
+                <span class="label">{{ t('miniCart.subtotal') }}</span>
                 <span class="value">${{ cartStore.totalPrice.toFixed(2) }}</span>
               </div>
               <div class="summary-line highlight">
-                <span class="label">الشحن:</span>
+                <span class="label">{{ t('miniCart.shipping') }}</span>
                 <span class="value">
-                  {{ cartStore.hasFreeShipping ? 'مجاني' : '$15.00' }}
+                  {{ cartStore.hasFreeShipping ? t('miniCart.free') : '$15.00' }}
                 </span>
               </div>
               <div class="summary-line grand-total">
-                <span class="label">الإجمالي النهائي:</span>
+                <span class="label">{{ t('miniCart.estimatedTotal') }}</span>
                 <span class="value">
                   ${{ (cartStore.totalPrice + (cartStore.hasFreeShipping ? 0 : 15)).toFixed(2) }}
                 </span>
@@ -181,17 +218,17 @@ const continueShopping = () => {
 
             <div class="footer-actions">
               <button type="button" class="checkout-btn" @click="goToCheckout">
-                <span>الدفع الفوري</span>
-                <i class="fa-solid fa-arrow-left"></i>
+                <span>{{ t('miniCart.instantCheckout') }}</span>
+                <i :class="isRtl ? 'fa-solid fa-arrow-left' : 'fa-solid fa-arrow-right'"></i>
               </button>
               <button type="button" class="view-cart-btn" @click="goToCart">
-                عرض تفاصيل السلة
+                {{ t('miniCart.viewCartDetails') }}
               </button>
             </div>
             
             <div class="trust-badge">
               <i class="fa-solid fa-shield-halved"></i>
-              <span>دفع آمن ومحمي 100% بتشفير SSL</span>
+              <span>{{ t('miniCart.secureCheckout') }}</span>
             </div>
           </div>
         </div>
@@ -204,38 +241,62 @@ const continueShopping = () => {
 .mini-cart-overlay {
   position: fixed;
   inset: 0;
-  background-color: rgba(15, 23, 42, 0.6);
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
+  max-height: 100dvh;
+  background-color: rgba(15, 23, 42, 0.5);
   backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
   z-index: 9999;
   display: flex;
+}
+
+/* RTL: Drawer panel aligns to the RIGHT */
+.mini-cart-overlay.rtl-overlay {
   justify-content: flex-end;
+}
+
+/* LTR: Drawer panel aligns to the LEFT */
+.mini-cart-overlay.ltr-overlay {
+  justify-content: flex-start;
 }
 
 .mini-cart-panel {
   width: 100%;
   max-width: 440px;
-  height: 100%;
+  height: 100vh;
+  height: 100dvh;
+  max-height: 100dvh;
   background: #ffffff;
   display: flex;
   flex-direction: column;
-  box-shadow: -10px 0 35px rgba(0, 0, 0, 0.15);
   position: relative;
   font-family: inherit;
+  overflow: hidden;
 }
 
 .mini-cart-panel.rtl-mode {
   direction: rtl;
   text-align: right;
+  box-shadow: -10px 0 35px rgba(0, 0, 0, 0.15);
+}
+
+.mini-cart-panel.ltr-mode {
+  direction: ltr;
+  text-align: left;
+  box-shadow: 10px 0 35px rgba(0, 0, 0, 0.15);
 }
 
 /* Header */
 .panel-header {
-  padding: 20px 24px;
+  padding: 18px 24px;
   border-bottom: 1px solid rgba(226, 232, 240, 0.8);
   display: flex;
   align-items: center;
   justify-content: space-between;
   background: #ffffff;
+  flex-shrink: 0;
 }
 
 .header-title-box {
@@ -270,9 +331,11 @@ const continueShopping = () => {
 }
 
 .close-btn {
-  width: 36px;
-  height: 36px;
-  border-radius: 10px;
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  min-height: 44px;
+  border-radius: 12px;
   border: 1px solid #e2e8f0;
   background: #f8fafc;
   color: #64748b;
@@ -281,12 +344,12 @@ const continueShopping = () => {
   justify-content: center;
   cursor: pointer;
   transition: all 0.2s ease;
+  font-size: 1.15rem;
 }
 
 .close-btn:hover {
   background: #f1f5f9;
   color: #0f172a;
-  transform: rotate(90deg);
 }
 
 /* Shipping Progress Banner */
@@ -294,6 +357,7 @@ const continueShopping = () => {
   padding: 14px 24px;
   background: #f8fafc;
   border-bottom: 1px solid rgba(226, 232, 240, 0.8);
+  flex-shrink: 0;
 }
 
 .shipping-text {
@@ -347,9 +411,9 @@ const continueShopping = () => {
 .cart-item-card {
   display: flex;
   gap: 14px;
-  padding: 12px;
+  padding: 14px;
   background: #ffffff;
-  border: 1px solid rgba(226, 232, 240, 0.8);
+  border: 1px solid rgba(226, 232, 240, 0.9);
   border-radius: 14px;
   transition: all 0.2s ease;
 }
@@ -408,20 +472,57 @@ const continueShopping = () => {
   border: none;
   color: #94a3b8;
   cursor: pointer;
-  padding: 4px;
+  padding: 8px;
+  min-width: 36px;
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   transition: color 0.2s ease;
-  font-size: 0.85rem;
+  font-size: 0.95rem;
 }
 
 .delete-item-btn:hover {
   color: #ef4444;
 }
 
+.item-variants-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 4px 0 2px;
+}
+
+.variant-mini-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #f1f5f9;
+  color: #334155;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 6px;
+}
+
+.weight-mini-chip {
+  background: #ecfdf5;
+  color: #059669;
+}
+
+.color-mini-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  display: inline-block;
+}
+
 .item-price-row {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin: 4px 0;
+  gap: 10px;
+  margin: 6px 0;
 }
 
 .unit-price {
@@ -430,7 +531,7 @@ const continueShopping = () => {
 }
 
 .line-total {
-  font-size: 0.95rem;
+  font-size: 0.92rem;
   font-weight: 800;
   color: #059669;
 }
@@ -439,31 +540,34 @@ const continueShopping = () => {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 10px;
 }
 
 .qty-stepper {
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  background: #f1f5f9;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
   border-radius: 8px;
-  padding: 2px 4px;
-  gap: 8px;
+  padding: 2px;
+  gap: 4px;
 }
 
 .stepper-btn {
-  width: 24px;
-  height: 24px;
-  border-radius: 6px;
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  min-height: 36px;
+  background: transparent;
   border: none;
-  background: #ffffff;
-  color: #1e293b;
-  cursor: pointer;
+  border-radius: 6px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.72rem;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  color: #475569;
+  cursor: pointer;
   transition: all 0.15s ease;
+  font-size: 0.75rem;
 }
 
 .stepper-btn:hover:not(:disabled) {
@@ -477,19 +581,19 @@ const continueShopping = () => {
 }
 
 .qty-value {
-  font-size: 0.82rem;
+  font-size: 0.88rem;
   font-weight: 700;
   color: #0f172a;
-  min-width: 18px;
+  min-width: 22px;
   text-align: center;
 }
 
 .stock-badge-low {
-  font-size: 0.7rem;
+  font-size: 0.72rem;
   color: #d97706;
-  font-weight: 600;
+  font-weight: 700;
   background: #fef3c7;
-  padding: 2px 6px;
+  padding: 2px 8px;
   border-radius: 6px;
 }
 
@@ -540,6 +644,7 @@ const continueShopping = () => {
   color: #ffffff;
   border: none;
   padding: 12px 24px;
+  min-height: 44px;
   border-radius: 12px;
   font-size: 0.9rem;
   font-weight: 700;
@@ -553,11 +658,13 @@ const continueShopping = () => {
   transform: translateY(-2px);
 }
 
-/* Footer */
+/* Footer with shrink-0 and Safe Area */
 .panel-footer {
   padding: 20px 24px;
   border-top: 1px solid rgba(226, 232, 240, 0.8);
   background: #ffffff;
+  flex-shrink: 0;
+  padding-bottom: calc(20px + env(safe-area-inset-bottom));
 }
 
 .summary-breakdown {
@@ -575,18 +682,26 @@ const continueShopping = () => {
   color: #64748b;
 }
 
-.summary-line.highlight {
+.summary-line .value {
+  font-weight: 700;
+  color: #1e293b;
+}
+
+.summary-line.highlight .value {
   color: #059669;
-  font-weight: 600;
 }
 
 .summary-line.grand-total {
-  font-size: 1.1rem;
+  font-size: 1.05rem;
   font-weight: 800;
   color: #0f172a;
-  border-top: 1px dashed #e2e8f0;
   padding-top: 8px;
-  margin-top: 4px;
+  border-top: 1px dashed #e2e8f0;
+}
+
+.summary-line.grand-total .value {
+  font-size: 1.25rem;
+  color: #059669;
 }
 
 .footer-actions {
@@ -596,39 +711,43 @@ const continueShopping = () => {
 }
 
 .checkout-btn {
-  width: 100%;
-  background: linear-gradient(135deg, #059669 0%, #047857 100%);
-  color: #ffffff;
-  border: none;
-  padding: 14px;
-  border-radius: 12px;
-  font-size: 0.95rem;
-  font-weight: 700;
-  cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 10px;
-  box-shadow: 0 4px 16px rgba(5, 150, 105, 0.3);
+  width: 100%;
+  padding: 14px;
+  min-height: 48px;
+  background: #059669;
+  color: white;
+  border: none;
+  border-radius: 12px;
+  font-size: 0.95rem;
+  font-weight: 700;
+  cursor: pointer;
   transition: all 0.2s ease;
+  box-shadow: 0 4px 14px rgba(5, 150, 105, 0.25);
+  font-family: inherit;
 }
 
 .checkout-btn:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 24px rgba(5, 150, 105, 0.35);
+  background: #047857;
+  transform: translateY(-1px);
 }
 
 .view-cart-btn {
   width: 100%;
+  padding: 12px;
+  min-height: 44px;
   background: #f8fafc;
   color: #334155;
   border: 1px solid #e2e8f0;
-  padding: 12px;
   border-radius: 12px;
-  font-size: 0.88rem;
+  font-size: 0.9rem;
   font-weight: 700;
   cursor: pointer;
   transition: all 0.2s ease;
+  font-family: inherit;
 }
 
 .view-cart-btn:hover {
@@ -640,9 +759,9 @@ const continueShopping = () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: 8px;
   margin-top: 14px;
-  font-size: 0.74rem;
+  font-size: 0.76rem;
   color: #94a3b8;
 }
 
@@ -657,33 +776,65 @@ const continueShopping = () => {
   opacity: 0;
 }
 
-.drawer-fade-enter-active .mini-cart-panel {
-  animation: slideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+/* RTL: Drawer slides smoothly from Right */
+.rtl-overlay.drawer-fade-enter-active .mini-cart-panel {
+  animation: slideInRight 0.32s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.drawer-fade-leave-active .mini-cart-panel {
-  animation: slideOut 0.25s ease-in;
+.rtl-overlay.drawer-fade-leave-active .mini-cart-panel {
+  animation: slideOutRight 0.25s ease-in;
 }
 
-@keyframes slideIn {
-  from {
-    transform: translateX(100%);
-  }
-  to {
-    transform: translateX(0);
-  }
+/* LTR: Drawer slides smoothly from Left */
+.ltr-overlay.drawer-fade-enter-active .mini-cart-panel {
+  animation: slideInLeft 0.32s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-@keyframes slideOut {
-  from {
-    transform: translateX(0);
-  }
-  to {
-    transform: translateX(100%);
-  }
+.ltr-overlay.drawer-fade-leave-active .mini-cart-panel {
+  animation: slideOutLeft 0.25s ease-in;
 }
 
-.rtl-mode.mini-cart-panel {
-  /* Handles left vs right slide for RTL */
+@keyframes slideInRight {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+@keyframes slideOutRight {
+  from { transform: translateX(0); }
+  to { transform: translateX(100%); }
+}
+
+@keyframes slideInLeft {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(0); }
+}
+
+@keyframes slideOutLeft {
+  from { transform: translateX(0); }
+  to { transform: translateX(-100%); }
+}
+
+/* Mobile Responsiveness */
+@media (max-width: 480px) {
+  .mini-cart-panel {
+    max-width: 100vw;
+    width: 100%;
+  }
+
+  .panel-header {
+    padding: 14px 16px;
+  }
+
+  .panel-body {
+    padding: 14px 16px;
+  }
+
+  .shipping-progress-banner {
+    padding: 12px 16px;
+  }
+
+  .panel-footer {
+    padding: 16px;
+  }
 }
 </style>
